@@ -17,6 +17,10 @@ import { handleHistoriesRequest } from "./handlers/histories.ts";
 import { handleConversationRequest } from "./handlers/conversations.ts";
 import { handleChatRequest } from "./handlers/chat.ts";
 import { handleAbortRequest } from "./handlers/abort.ts";
+import {
+  handleInteractionResponse,
+  PendingInteractions,
+} from "./handlers/interactions.ts";
 import { logger } from "./utils/logger.ts";
 import { readBinaryFile } from "./utils/fs.ts";
 
@@ -34,6 +38,7 @@ export function createApp(
 
   // Store AbortControllers for each request (shared with chat handler)
   const requestAbortControllers = new Map<string, AbortController>();
+  const interactions = new PendingInteractions();
 
   // CORS middleware
   app.use(
@@ -71,6 +76,10 @@ export function createApp(
   );
 
   app.post("/api/chat", (c) => handleChatRequest(c, requestAbortControllers));
+
+  app.post("/api/interactions/:interactionId/respond", (c) =>
+    handleInteractionResponse(c, interactions),
+  );
 
   // Static file serving with SPA fallback
   // Serve static assets (CSS, JS, images, etc.)

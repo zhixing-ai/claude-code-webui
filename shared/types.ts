@@ -1,8 +1,32 @@
-export interface StreamResponse {
-  type: "claude_json" | "error" | "done" | "aborted";
-  data?: unknown; // SDKMessage object for claude_json type
-  error?: string;
+export interface AskUserQuestionOption {
+  label: string;
+  description: string;
+  preview?: string;
 }
+
+export interface AskUserQuestionItem {
+  question: string;
+  header: string;
+  options: AskUserQuestionOption[];
+  multiSelect: boolean;
+}
+
+export interface AskUserQuestionStreamResponse {
+  type: "ask_user_question";
+  interactionId: string;
+  questions: AskUserQuestionItem[];
+}
+
+export type InteractionResponse =
+  | { answers: Record<string, string> }
+  | { cancelled: true };
+
+export type StreamResponse =
+  | { type: "claude_json"; data: unknown }
+  | AskUserQuestionStreamResponse
+  | { type: "error"; error?: string }
+  | { type: "done" }
+  | { type: "aborted" };
 
 export interface ChatRequest {
   message: string;
