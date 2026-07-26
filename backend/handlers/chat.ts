@@ -1,5 +1,5 @@
 import { Context } from "hono";
-import { query, type PermissionMode } from "@anthropic-ai/claude-code";
+import { query, type PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import type { ChatRequest, StreamResponse } from "../../shared/types.ts";
 import { logger } from "../utils/logger.ts";
 

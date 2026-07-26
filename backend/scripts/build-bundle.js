@@ -18,7 +18,7 @@ await build({
   format: "esm",
   outfile: "dist/cli/node.js",
   external: [
-    "@anthropic-ai/claude-code",
+    "@anthropic-ai/claude-agent-sdk",
     "@hono/node-server",
     "hono",
     "commander",

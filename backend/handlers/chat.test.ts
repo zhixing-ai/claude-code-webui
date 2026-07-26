@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Context } from "hono";
 import { handleChatRequest } from "./chat";
 import type { ChatRequest } from "../../shared/types";
-import { query } from "@anthropic-ai/claude-code";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 
 // Define minimal mock types for Claude Code SDK to maintain type safety in tests
 type MockClaudeCode = {
@@ -10,7 +10,7 @@ type MockClaudeCode = {
 };
 
 vi.mock(
-  "@anthropic-ai/claude-code",
+  "@anthropic-ai/claude-agent-sdk",
   (): MockClaudeCode => ({
     query: vi.fn(),
   }),

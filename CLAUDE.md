@@ -177,7 +177,7 @@ npm run dev
 
 ## Claude Code SDK Types Reference
 
-**SDK Types**: `frontend/node_modules/@anthropic-ai/claude-code/sdk.d.ts`
+**SDK Types**: `frontend/node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts`
 
 ```typescript
 // Type extraction
@@ -225,11 +225,10 @@ cd backend && deno task build  # Local building
 
 **Update Procedure**:
 
-1. Check versions: `grep "@anthropic-ai/claude-code" frontend/package.json backend/deno.json`
-2. Update frontend package.json and `npm install`
-3. Update backend deno.json imports and `rm deno.lock && deno cache cli/deno.ts`
-4. Update backend package.json and `npm install`
-5. Verify: `make check`
+1. Check versions: `grep "@anthropic-ai/claude-agent-sdk" frontend/package.json backend/package.json`
+2. Update frontend package.json and run `npm install`
+3. Update backend package.json and run `npm install`
+4. Verify the Node path with both test suites, type checks, and npm builds
 
 ## Commands for Claude
 
