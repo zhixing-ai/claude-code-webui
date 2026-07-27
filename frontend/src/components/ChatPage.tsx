@@ -6,6 +6,8 @@ import type {
   ChatMessage,
   ProjectInfo,
   PermissionMode,
+  AskUserQuestionStreamResponse,
+  InteractionResponse,
 } from "../types";
 import { useClaudeStreaming } from "../hooks/useClaudeStreaming";
 import { useChatState } from "../hooks/chat/useChatState";
@@ -19,7 +21,11 @@ import { HistoryButton } from "./chat/HistoryButton";
 import { ChatInput } from "./chat/ChatInput";
 import { ChatMessages } from "./chat/ChatMessages";
 import { HistoryView } from "./HistoryView";
-import { getChatUrl, getProjectsUrl } from "../config/api";
+import {
+  getChatUrl,
+  getInteractionResponseUrl,
+  getProjectsUrl,
+} from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
@@ -30,6 +36,8 @@ export function ChatPage() {
   const [searchParams] = useSearchParams();
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [askUserQuestion, setAskUserQuestion] =
+    useState<AskUserQuestionStreamResponse | null>(null);
 
   // Extract and normalize working directory from URL
   const workingDirectory = (() => {
@@ -188,6 +196,7 @@ export function ChatPage() {
         // Local state for this streaming session
         let localHasReceivedInit = false;
         let shouldAbort = false;
+        let streamBuffer = "";
 
         const streamingContext: StreamingContext = {
           currentAssistantMessage,
@@ -209,21 +218,28 @@ export function ChatPage() {
             shouldAbort = true;
             await createAbortHandler(requestId)();
           },
+          onAskUserQuestion: setAskUserQuestion,
         };
 
         while (true) {
           const { done, value } = await reader.read();
           if (done || shouldAbort) break;
 
-          const chunk = decoder.decode(value);
-          const lines = chunk.split("\n").filter((line) => line.trim());
+          streamBuffer += decoder.decode(value, { stream: true });
+          const lines = streamBuffer.split("\n");
+          streamBuffer = lines.pop() ?? "";
 
           for (const line of lines) {
             if (shouldAbort) break;
-            processStreamLine(line, streamingContext);
+            if (line.trim()) processStreamLine(line, streamingContext);
           }
 
           if (shouldAbort) break;
+        }
+
+        streamBuffer += decoder.decode();
+        if (!shouldAbort && streamBuffer.trim()) {
+          processStreamLine(streamBuffer, streamingContext);
         }
       } catch (error) {
         console.error("Failed to send message:", error);
@@ -234,6 +250,7 @@ export function ChatPage() {
           timestamp: Date.now(),
         });
       } finally {
+        setAskUserQuestion(null);
         resetRequestState();
       }
     },
@@ -263,8 +280,37 @@ export function ChatPage() {
   );
 
   const handleAbort = useCallback(() => {
+    setAskUserQuestion(null);
     abortRequest(currentRequestId, isLoading, resetRequestState);
   }, [abortRequest, currentRequestId, isLoading, resetRequestState]);
+
+  const respondToQuestion = useCallback(
+    async (body: InteractionResponse) => {
+      if (!askUserQuestion) {
+        throw new Error("Question is no longer active");
+      }
+
+      const response = await fetch(
+        getInteractionResponseUrl(askUserQuestion.interactionId),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(
+          payload?.error || "Could not submit question response",
+        );
+      }
+
+      setAskUserQuestion(null);
+    },
+    [askUserQuestion],
+  );
 
   // Permission request handlers
   const handlePermissionAllow = useCallback(() => {
@@ -580,6 +626,17 @@ export function ChatPage() {
               showPermissions={isPermissionMode}
               permissionData={permissionData}
               planPermissionData={planPermissionData}
+              askUserQuestionData={
+                askUserQuestion
+                  ? {
+                      questions: askUserQuestion.questions,
+                      onSubmit: (answers) =>
+                        respondToQuestion({ answers }),
+                      onCancel: () =>
+                        respondToQuestion({ cancelled: true }),
+                    }
+                  : undefined
+              }
             />
           </>
         )}

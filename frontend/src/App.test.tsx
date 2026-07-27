@@ -1,4 +1,10 @@
-import { render, screen, waitFor, act } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  act,
+  fireEvent,
+} from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { ProjectSelector } from "./components/ProjectSelector";
@@ -49,5 +55,101 @@ describe("App Routing", () => {
       expect(screen.getByText("Claude Code Web UI")).toBeInTheDocument();
       expect(screen.getByText("/test-path")).toBeInTheDocument();
     });
+  });
+
+  it("answers a streamed AskUserQuestion through the interaction endpoint", async () => {
+    let chatController: ReadableStreamDefaultController<Uint8Array> | null =
+      null;
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/projects") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ projects: [] }), {
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      if (url === "/api/chat") {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            chatController = controller;
+            const event = JSON.stringify({
+              type: "ask_user_question",
+              interactionId: "interaction-1",
+              questions: [
+                {
+                  question: "Which format?",
+                  header: "Format",
+                  options: [
+                    { label: "Short", description: "Summary" },
+                    { label: "Long", description: "Details" },
+                  ],
+                  multiSelect: false,
+                },
+              ],
+            });
+            controller.enqueue(
+              new TextEncoder().encode(event.slice(0, 40)),
+            );
+            controller.enqueue(
+              new TextEncoder().encode(`${event.slice(40)}\n`),
+            );
+          },
+        });
+        return Promise.resolve(new Response(stream));
+      }
+      if (url === "/api/interactions/interaction-1/respond") {
+        chatController?.enqueue(
+          new TextEncoder().encode(`${JSON.stringify({ type: "done" })}\n`),
+        );
+        chatController?.close();
+        return Promise.resolve(
+          new Response(JSON.stringify({ ok: true }), {
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    render(
+      <SettingsProvider>
+        <MemoryRouter initialEntries={["/projects/test-path"]}>
+          <Routes>
+            <Route path="/projects/*" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SettingsProvider>,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Type message..."), {
+      target: { value: "Ask me a question" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(
+      await screen.findByText("Claude needs your input"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Short"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Submit answers" }),
+    );
+
+    await waitFor(() => {
+      const responseCall = fetchMock.mock.calls.find(
+        ([url]) =>
+          String(url) === "/api/interactions/interaction-1/respond",
+      );
+      expect(responseCall).toBeDefined();
+      expect(JSON.parse(responseCall![1].body)).toEqual({
+        answers: { "Which format?": "Short" },
+      });
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Claude needs your input"),
+      ).not.toBeInTheDocument(),
+    );
   });
 });

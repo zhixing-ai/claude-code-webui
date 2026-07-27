@@ -6,6 +6,7 @@ export const API_CONFIG = {
     PROJECTS: "/api/projects",
     HISTORIES: "/api/projects",
     CONVERSATIONS: "/api/projects",
+    INTERACTIONS: "/api/interactions",
   },
 } as const;
 
@@ -22,6 +23,10 @@ export const getAbortUrl = (requestId: string) => {
 // Helper function to get chat URL
 export const getChatUrl = () => {
   return API_CONFIG.ENDPOINTS.CHAT;
+};
+
+export const getInteractionResponseUrl = (interactionId: string) => {
+  return `${API_CONFIG.ENDPOINTS.INTERACTIONS}/${encodeURIComponent(interactionId)}/respond`;
 };
 
 // Helper function to get projects URL
