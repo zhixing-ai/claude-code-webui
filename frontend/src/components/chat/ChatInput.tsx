@@ -4,7 +4,8 @@ import { UI_CONSTANTS, KEYBOARD_SHORTCUTS } from "../../utils/constants";
 import { useEnterBehavior } from "../../hooks/useSettings";
 import { PermissionInputPanel } from "./PermissionInputPanel";
 import { PlanPermissionInputPanel } from "./PlanPermissionInputPanel";
-import type { PermissionMode } from "../../types";
+import { AskUserQuestionPanel } from "./AskUserQuestionPanel";
+import type { AskUserQuestionItem, PermissionMode } from "../../types";
 
 interface PermissionData {
   patterns: string[];
@@ -37,6 +38,12 @@ interface PlanPermissionData {
     | null;
 }
 
+export interface AskUserQuestionData {
+  questions: AskUserQuestionItem[];
+  onSubmit: (answers: Record<string, string>) => Promise<void>;
+  onCancel: () => Promise<void>;
+}
+
 interface ChatInputProps {
   input: string;
   isLoading: boolean;
@@ -50,6 +57,7 @@ interface ChatInputProps {
   showPermissions?: boolean;
   permissionData?: PermissionData;
   planPermissionData?: PlanPermissionData;
+  askUserQuestionData?: AskUserQuestionData;
 }
 
 export function ChatInput({
@@ -64,6 +72,7 @@ export function ChatInput({
   showPermissions = false,
   permissionData,
   planPermissionData,
+  askUserQuestionData,
 }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [isComposing, setIsComposing] = useState(false);
@@ -71,10 +80,15 @@ export function ChatInput({
 
   // Focus input when not loading and not in permission mode
   useEffect(() => {
-    if (!isLoading && !showPermissions && inputRef.current) {
+    if (
+      !isLoading &&
+      !showPermissions &&
+      !askUserQuestionData &&
+      inputRef.current
+    ) {
       inputRef.current.focus();
     }
-  }, [isLoading, showPermissions]);
+  }, [isLoading, showPermissions, askUserQuestionData]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -178,6 +192,10 @@ export function ChatInput({
     const currentIndex = modes.indexOf(current);
     return modes[(currentIndex + 1) % modes.length];
   };
+
+  if (askUserQuestionData) {
+    return <AskUserQuestionPanel {...askUserQuestionData} />;
+  }
 
   // If we're in plan permission mode, show the plan permission panel instead
   if (showPermissions && planPermissionData) {
