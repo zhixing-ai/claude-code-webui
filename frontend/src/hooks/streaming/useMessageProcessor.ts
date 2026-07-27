@@ -18,6 +18,7 @@ export interface StreamingContext {
   setHasReceivedInit?: (received: boolean) => void;
   onAskUserQuestion?: (event: AskUserQuestionStreamResponse) => void;
   onToolPermission?: (event: ToolPermissionStreamResponse) => void;
+  onSdkMessage?: (message: import("../../types").SDKMessage) => void;
 }
 
 /**

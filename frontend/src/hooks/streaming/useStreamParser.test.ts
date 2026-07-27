@@ -23,6 +23,7 @@ describe("useStreamParser", () => {
       onInitMessageShown: vi.fn(),
       onAskUserQuestion: vi.fn(),
       onToolPermission: vi.fn(),
+      onSdkMessage: vi.fn(),
     };
 
     vi.clearAllMocks();
@@ -413,6 +414,32 @@ describe("useStreamParser", () => {
           toolUseResult: { stdout: "/tmp/project", stderr: "" },
         }),
       );
+    });
+
+    it("forwards task messages without adding duplicate chat cards", () => {
+      const { result } = renderHook(() => useStreamParser());
+      const taskMessage = {
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "task-create",
+              name: "TaskCreate",
+              input: { subject: "Build sidebar", description: "Show tasks" },
+            },
+          ],
+        },
+      } as Extract<SDKMessage, { type: "assistant" }>;
+
+      result.current.processStreamLine(
+        JSON.stringify({ type: "claude_json", data: taskMessage }),
+        mockContext,
+      );
+
+      expect(mockContext.onSdkMessage).toHaveBeenCalledWith(taskMessage);
+      expect(mockContext.addMessage).not.toHaveBeenCalled();
     });
 
     it("should handle malformed JSON gracefully", () => {

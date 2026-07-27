@@ -4,6 +4,7 @@ import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
+  SDKMessage,
   ProjectInfo,
   PermissionMode,
   AskUserQuestionStreamResponse,
@@ -31,6 +32,13 @@ import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
 import { extractToolInfo, generateToolPatterns } from "../utils/toolUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
+import { TaskSidebar } from "./chat/TaskSidebar";
+import {
+  createEmptyTaskProjection,
+  reduceTaskMessage,
+  replayTaskMessages,
+  selectTasks,
+} from "../utils/taskProjection";
 
 export function ChatPage() {
   const location = useLocation();
@@ -44,6 +52,9 @@ export function ChatPage() {
     ToolPermissionStreamResponse[]
   >([]);
   const toolPermission = toolPermissions[0] ?? null;
+  const [taskProjection, setTaskProjection] = useState(
+    createEmptyTaskProjection,
+  );
 
   // Extract and normalize working directory from URL
   const workingDirectory = (() => {
@@ -92,6 +103,7 @@ export function ChatPage() {
   // Load conversation history if sessionId is provided
   const {
     messages: historyMessages,
+    sdkMessages: historySdkMessages,
     loading: historyLoading,
     error: historyError,
     sessionId: loadedSessionId,
@@ -99,6 +111,14 @@ export function ChatPage() {
     getEncodedName() || undefined,
     sessionId || undefined,
   );
+
+  useEffect(() => {
+    setTaskProjection(replayTaskMessages(historySdkMessages));
+  }, [historySdkMessages]);
+
+  const handleSdkMessage = useCallback((message: SDKMessage) => {
+    setTaskProjection((current) => reduceTaskMessage(current, message));
+  }, []);
 
   // Initialize chat state with loaded history
   const {
@@ -229,6 +249,7 @@ export function ChatPage() {
           },
           onAskUserQuestion: setAskUserQuestion,
           onToolPermission: handleToolPermission,
+          onSdkMessage: handleSdkMessage,
         };
 
         while (true) {
@@ -285,6 +306,7 @@ export function ChatPage() {
       resetRequestState,
       processStreamLine,
       handleToolPermission,
+      handleSdkMessage,
       closePermissionRequest,
       closePlanModeRequest,
     ],
@@ -522,9 +544,16 @@ export function ChatPage() {
     return () => document.removeEventListener("keydown", handleGlobalKeyDown);
   }, [isLoading, currentRequestId, handleAbort]);
 
+  const tasks = selectTasks(taskProjection);
+  const hasTasks = tasks.length > 0;
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
-      <div className="max-w-6xl mx-auto p-3 sm:p-6 h-screen flex flex-col">
+      <div
+        className={`mx-auto flex h-screen flex-col p-3 sm:p-6 ${
+          hasTasks ? "max-w-[92rem]" : "max-w-6xl"
+        }`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
           <div className="flex items-center gap-4">
@@ -652,34 +681,41 @@ export function ChatPage() {
             </div>
           </div>
         ) : (
-          <>
-            {/* Chat Messages */}
-            <ChatMessages messages={messages} isLoading={isLoading} />
+          <div
+            className={`flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:gap-5 ${
+              hasTasks ? "lg:grid-cols-[18rem_minmax(0,1fr)]" : "lg:grid-cols-1"
+            }`}
+          >
+            <TaskSidebar tasks={tasks} />
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              {/* Chat Messages */}
+              <ChatMessages messages={messages} isLoading={isLoading} />
 
-            {/* Input */}
-            <ChatInput
-              input={input}
-              isLoading={isLoading}
-              currentRequestId={currentRequestId}
-              onInputChange={setInput}
-              onSubmit={() => sendMessage()}
-              onAbort={handleAbort}
-              permissionMode={permissionMode}
-              onPermissionModeChange={setPermissionMode}
-              showPermissions={isPermissionMode}
-              permissionData={permissionData}
-              planPermissionData={planPermissionData}
-              askUserQuestionData={
-                askUserQuestion
-                  ? {
-                      questions: askUserQuestion.questions,
-                      onSubmit: (answers) => respondToQuestion({ answers }),
-                      onCancel: () => respondToQuestion({ cancelled: true }),
-                    }
-                  : undefined
-              }
-            />
-          </>
+              {/* Input */}
+              <ChatInput
+                input={input}
+                isLoading={isLoading}
+                currentRequestId={currentRequestId}
+                onInputChange={setInput}
+                onSubmit={() => sendMessage()}
+                onAbort={handleAbort}
+                permissionMode={permissionMode}
+                onPermissionModeChange={setPermissionMode}
+                showPermissions={isPermissionMode}
+                permissionData={permissionData}
+                planPermissionData={planPermissionData}
+                askUserQuestionData={
+                  askUserQuestion
+                    ? {
+                        questions: askUserQuestion.questions,
+                        onSubmit: (answers) => respondToQuestion({ answers }),
+                        onCancel: () => respondToQuestion({ cancelled: true }),
+                      }
+                    : undefined
+                }
+              />
+            </div>
+          </div>
         )}
 
         {/* Settings Modal */}

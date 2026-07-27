@@ -6,6 +6,7 @@ import { useMessageConverter } from "./useMessageConverter";
 
 interface HistoryLoaderState {
   messages: AllMessage[];
+  sdkMessages: TimestampedSDKMessage[];
   loading: boolean;
   error: string | null;
   sessionId: string | null;
@@ -35,6 +36,7 @@ function isTimestampedSDKMessage(
 export function useHistoryLoader(): HistoryLoaderResult {
   const [state, setState] = useState<HistoryLoaderState>({
     messages: [],
+    sdkMessages: [],
     loading: false,
     error: null,
     sessionId: null,
@@ -96,6 +98,7 @@ export function useHistoryLoader(): HistoryLoaderResult {
         setState((prev) => ({
           ...prev,
           messages: convertedMessages,
+          sdkMessages: timestampedMessages,
           loading: false,
           sessionId: conversationHistory.sessionId,
         }));
@@ -118,6 +121,7 @@ export function useHistoryLoader(): HistoryLoaderResult {
   const clearHistory = useCallback(() => {
     setState({
       messages: [],
+      sdkMessages: [],
       loading: false,
       error: null,
       sessionId: null,

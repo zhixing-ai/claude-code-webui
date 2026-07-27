@@ -14,6 +14,7 @@ import {
   createTodoMessageFromInput,
 } from "./messageConversion";
 import { isThinkingContentItem } from "./messageTypes";
+import { isClaudeTaskTool } from "./taskProjection";
 
 /**
  * Tool cache interface for tracking tool_use information
@@ -118,6 +119,18 @@ export class UnifiedMessageProcessor {
       return;
     }
 
+    if (isClaudeTaskTool(toolName)) {
+      const result =
+        typeof toolUseResult === "object" && toolUseResult !== null
+          ? (toolUseResult as Record<string, unknown>)
+          : undefined;
+      const failed =
+        contentItem.is_error === true ||
+        result?.success === false ||
+        typeof result?.error === "string";
+      if (!failed) return;
+    }
+
     if (
       toolName === "ExitPlanMode" &&
       typeof (toolUseResult as { plan?: unknown } | undefined)?.plan ===
@@ -202,7 +215,9 @@ export class UnifiedMessageProcessor {
     }
 
     // Older transcripts included the plan in input; current SDKs return it in tool_use_result.
-    if (
+    if (contentItem.name && isClaudeTaskTool(contentItem.name)) {
+      return;
+    } else if (
       contentItem.name === "ExitPlanMode" &&
       typeof contentItem.input?.plan === "string"
     ) {

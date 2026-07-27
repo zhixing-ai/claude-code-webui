@@ -101,6 +101,7 @@ export function useStreamParser() {
         } else if (data.type === "claude_json" && data.data) {
           // data.data is already an SDKMessage object, no need to parse
           const claudeData = data.data as SDKMessage;
+          context.onSdkMessage?.(claudeData);
           processClaudeData(claudeData, context);
         } else if (data.type === "error") {
           const errorMessage: SystemMessage = {
