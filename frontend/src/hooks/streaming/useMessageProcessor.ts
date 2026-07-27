@@ -1,4 +1,8 @@
-import type { AllMessage, ChatMessage } from "../../types";
+import type {
+  AllMessage,
+  AskUserQuestionStreamResponse,
+  ChatMessage,
+} from "../../types";
 import { useMessageConverter } from "../useMessageConverter";
 
 export interface StreamingContext {
@@ -17,6 +21,7 @@ export interface StreamingContext {
     toolUseId: string,
   ) => void;
   onAbortRequest?: () => void;
+  onAskUserQuestion?: (event: AskUserQuestionStreamResponse) => void;
 }
 
 /**

@@ -98,7 +98,9 @@ export function useStreamParser() {
       try {
         const data: StreamResponse = JSON.parse(line);
 
-        if (data.type === "claude_json" && data.data) {
+        if (data.type === "ask_user_question") {
+          context.onAskUserQuestion?.(data);
+        } else if (data.type === "claude_json" && data.data) {
           // data.data is already an SDKMessage object, no need to parse
           const claudeData = data.data as SDKMessage;
           processClaudeData(claudeData, context);

@@ -21,6 +21,7 @@ describe("useStreamParser", () => {
       setHasReceivedInit: vi.fn(),
       shouldShowInitMessage: vi.fn(() => true),
       onInitMessageShown: vi.fn(),
+      onAskUserQuestion: vi.fn(),
     };
 
     vi.clearAllMocks();
@@ -269,6 +270,30 @@ describe("useStreamParser", () => {
   });
 
   describe("Stream Line Processing and Error Handling", () => {
+    it("forwards AskUserQuestion events without creating a chat message", () => {
+      const { result } = renderHook(() => useStreamParser());
+      const event = {
+        type: "ask_user_question" as const,
+        interactionId: "interaction-1",
+        questions: [
+          {
+            question: "Which format?",
+            header: "Format",
+            options: [
+              { label: "Short", description: "Summary" },
+              { label: "Long", description: "Details" },
+            ],
+            multiSelect: false,
+          },
+        ],
+      };
+
+      result.current.processStreamLine(JSON.stringify(event), mockContext);
+
+      expect(mockContext.onAskUserQuestion).toHaveBeenCalledWith(event);
+      expect(mockContext.addMessage).not.toHaveBeenCalled();
+    });
+
     it("should handle malformed JSON gracefully", () => {
       const { result } = renderHook(() => useStreamParser());
       const consoleSpy = vi
