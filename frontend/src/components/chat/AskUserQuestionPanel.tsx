@@ -176,10 +176,7 @@ export function AskUserQuestionPanel({
 
               {values.includes(OTHER) && (
                 <div>
-                  <label
-                    htmlFor={`other-${questionIndex}`}
-                    className="sr-only"
-                  >
+                  <label htmlFor={`other-${questionIndex}`} className="sr-only">
                     Other answer for {question.question}
                   </label>
                   <input

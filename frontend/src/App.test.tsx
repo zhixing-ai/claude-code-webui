@@ -89,9 +89,7 @@ describe("App Routing", () => {
                 },
               ],
             });
-            controller.enqueue(
-              new TextEncoder().encode(event.slice(0, 40)),
-            );
+            controller.enqueue(new TextEncoder().encode(event.slice(0, 40)));
             controller.enqueue(
               new TextEncoder().encode(`${event.slice(40)}\n`),
             );
@@ -132,14 +130,11 @@ describe("App Routing", () => {
       await screen.findByText("Claude needs your input"),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Short"));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Submit answers" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
 
     await waitFor(() => {
       const responseCall = fetchMock.mock.calls.find(
-        ([url]) =>
-          String(url) === "/api/interactions/interaction-1/respond",
+        ([url]) => String(url) === "/api/interactions/interaction-1/respond",
       );
       expect(responseCall).toBeDefined();
       expect(JSON.parse(responseCall![1].body)).toEqual({

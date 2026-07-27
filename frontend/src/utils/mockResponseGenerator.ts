@@ -1,4 +1,4 @@
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKContentBlock, SDKMessage } from "../types";
 import { generateToolPattern } from "./toolUtils";
 import { generateId } from "./id";
 
@@ -210,7 +210,9 @@ export function createExitPlanModeToolUseWithId(
 export function createExitPlanModeToolResult(
   sessionId: string,
   toolUseId: string,
-): Extract<SDKMessage, { type: "user" }> {
+): Extract<SDKMessage, { type: "user" }> & {
+  message: { content: SDKContentBlock[] };
+} {
   return {
     type: "user",
     message: {

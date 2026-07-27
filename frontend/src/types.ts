@@ -1,10 +1,78 @@
-import type {
-  SDKUserMessage,
-  SDKAssistantMessage,
-  SDKSystemMessage,
-  SDKResultMessage,
-  PermissionMode as SDKPermissionMode,
-} from "@anthropic-ai/claude-agent-sdk";
+// The frontend consumes Claude's JSON protocol over HTTP. Keep this boundary
+// intentionally smaller than the SDK's internal types so SDK additions do not
+// break the web build.
+export interface SDKContentBlock {
+  type: string;
+  text?: string;
+  thinking?: string;
+  id?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+  tool_use_id?: string;
+  content?: unknown;
+  is_error?: boolean;
+}
+
+interface SDKMessageBody<TContent> {
+  content: TContent;
+  [key: string]: unknown;
+}
+
+export interface SDKSystemMessage {
+  type: "system";
+  subtype: string;
+  apiKeySource: string;
+  cwd: string;
+  session_id: string;
+  uuid: string;
+  tools: string[];
+  mcp_servers: { name: string; status: string }[];
+  model: string;
+  permissionMode: string;
+  slash_commands: string[];
+  output_style: string;
+}
+
+export interface SDKAssistantMessage {
+  type: "assistant";
+  message: SDKMessageBody<SDKContentBlock[]>;
+  parent_tool_use_id: string | null;
+  session_id?: string;
+  uuid?: string;
+}
+
+export interface SDKUserMessage {
+  type: "user";
+  message: SDKMessageBody<string | SDKContentBlock[]>;
+  parent_tool_use_id: string | null;
+  session_id?: string;
+  uuid?: string;
+}
+
+export interface SDKResultMessage {
+  type: "result";
+  subtype: string;
+  duration_ms: number;
+  duration_api_ms: number;
+  is_error: boolean;
+  num_turns: number;
+  result?: string;
+  session_id?: string;
+  uuid?: string;
+  total_cost_usd: number;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens?: number;
+  };
+  permission_denials: unknown[];
+}
+
+export type SDKMessage =
+  | SDKSystemMessage
+  | SDKAssistantMessage
+  | SDKUserMessage
+  | SDKResultMessage;
 
 // Chat message for user/assistant interactions (not part of SDKMessage)
 export interface ChatMessage {
@@ -172,18 +240,6 @@ export function isTodoMessage(message: AllMessage): message is TodoMessage {
 // Permission mode types (UI-focused subset of SDK PermissionMode)
 export type PermissionMode = "default" | "plan" | "acceptEdits";
 
-// SDK type integration utilities
-export function toSDKPermissionMode(uiMode: PermissionMode): SDKPermissionMode {
-  return uiMode as SDKPermissionMode;
-}
-
-export function fromSDKPermissionMode(
-  sdkMode: SDKPermissionMode,
-): PermissionMode {
-  // Filter out bypassPermissions for UI
-  return sdkMode === "bypassPermissions" ? "default" : sdkMode;
-}
-
 // Chat state extensions for permission mode
 export interface ChatStatePermissions {
   permissionMode: PermissionMode;
@@ -222,12 +278,3 @@ export type {
   AskUserQuestionStreamResponse,
   InteractionResponse,
 } from "../../shared/types";
-
-// Re-export SDK types
-export type {
-  SDKMessage,
-  SDKSystemMessage,
-  SDKResultMessage,
-  SDKAssistantMessage,
-  SDKUserMessage,
-} from "@anthropic-ai/claude-agent-sdk";

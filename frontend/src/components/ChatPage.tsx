@@ -302,9 +302,7 @@ export function ChatPage() {
         const payload = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(
-          payload?.error || "Could not submit question response",
-        );
+        throw new Error(payload?.error || "Could not submit question response");
       }
 
       setAskUserQuestion(null);
@@ -630,10 +628,8 @@ export function ChatPage() {
                 askUserQuestion
                   ? {
                       questions: askUserQuestion.questions,
-                      onSubmit: (answers) =>
-                        respondToQuestion({ answers }),
-                      onCancel: () =>
-                        respondToQuestion({ cancelled: true }),
+                      onSubmit: (answers) => respondToQuestion({ answers }),
+                      onCancel: () => respondToQuestion({ cancelled: true }),
                     }
                   : undefined
               }

@@ -110,7 +110,7 @@ export class UnifiedMessageProcessor {
    * Handle permission errors during streaming
    */
   private handlePermissionError(
-    contentItem: { tool_use_id?: string; content: string },
+    contentItem: { tool_use_id?: string },
     context: ProcessingContext,
   ): void {
     // Immediately abort the current request
@@ -143,7 +143,7 @@ export class UnifiedMessageProcessor {
   private processToolResult(
     contentItem: {
       tool_use_id?: string;
-      content: string;
+      content?: unknown;
       is_error?: boolean;
     },
     context: ProcessingContext,

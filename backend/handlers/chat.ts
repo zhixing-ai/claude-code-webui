@@ -97,9 +97,7 @@ export async function handleChatRequest(
       const send = (chunk: StreamResponse) => {
         if (closed) return;
         try {
-          controller.enqueue(
-            encoder.encode(`${JSON.stringify(chunk)}\n`),
-          );
+          controller.enqueue(encoder.encode(`${JSON.stringify(chunk)}\n`));
         } catch {
           closed = true;
           requestAbortController?.abort();
@@ -124,9 +122,7 @@ export async function handleChatRequest(
             executable: "node",
             executableArgs: [],
             pathToClaudeCodeExecutable: cliPath,
-            ...(chatRequest.sessionId
-              ? { resume: chatRequest.sessionId }
-              : {}),
+            ...(chatRequest.sessionId ? { resume: chatRequest.sessionId } : {}),
             ...(chatRequest.allowedTools
               ? { allowedTools: chatRequest.allowedTools }
               : {}),

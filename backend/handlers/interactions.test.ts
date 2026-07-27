@@ -1,9 +1,6 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import {
-  handleInteractionResponse,
-  PendingInteractions,
-} from "./interactions";
+import { handleInteractionResponse, PendingInteractions } from "./interactions";
 
 const questions = [
   {
@@ -71,9 +68,9 @@ describe("PendingInteractions", () => {
       new AbortController().signal,
     );
 
-    expect(
-      store.respond(pending.interactionId, { cancelled: true }),
-    ).toBe("ok");
+    expect(store.respond(pending.interactionId, { cancelled: true })).toBe(
+      "ok",
+    );
     await expect(pending.response).resolves.toEqual({
       behavior: "deny",
       message: "User cancelled the question",
@@ -91,9 +88,9 @@ describe("PendingInteractions", () => {
       behavior: "deny",
       message: "Request aborted",
     });
-    expect(
-      store.respond(pending.interactionId, { cancelled: true }),
-    ).toBe("not_found");
+    expect(store.respond(pending.interactionId, { cancelled: true })).toBe(
+      "not_found",
+    );
   });
 
   it("returns 400 for incomplete answers and 404 for expired interactions", async () => {

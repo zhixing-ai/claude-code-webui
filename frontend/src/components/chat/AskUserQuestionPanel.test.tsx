@@ -42,13 +42,10 @@ describe("AskUserQuestionPanel", () => {
     fireEvent.click(screen.getByLabelText("Short"));
     fireEvent.click(screen.getByLabelText("Tests"));
     fireEvent.click(screen.getAllByLabelText("Other")[1]);
-    fireEvent.change(
-      screen.getByLabelText("Other answer for Which checks?"),
-      { target: { value: "Typecheck" } },
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Submit answers" }),
-    );
+    fireEvent.change(screen.getByLabelText("Other answer for Which checks?"), {
+      target: { value: "Typecheck" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
 
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith({
@@ -91,18 +88,14 @@ describe("AskUserQuestionPanel", () => {
 
     const longOption = screen.getByLabelText("Long");
     fireEvent.click(longOption);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Submit answers" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
 
     expect(
       await screen.findByText("Could not submit answers. Try again."),
     ).toBeInTheDocument();
     expect(longOption).toBeChecked();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Submit answers" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Submit answers" }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
   });
 
