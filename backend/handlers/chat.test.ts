@@ -3,6 +3,7 @@ import { Context } from "hono";
 import { handleChatRequest } from "./chat";
 import type { ChatRequest } from "../../shared/types";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { PendingInteractions } from "./interactions";
 
 // Define minimal mock types for Claude Code SDK to maintain type safety in tests
 type MockClaudeCode = {
@@ -31,9 +32,11 @@ const mockQuery = vi.mocked(query);
 describe("Chat Handler - Permission Mode Tests", () => {
   let mockContext: Context;
   let requestAbortControllers: Map<string, AbortController>;
+  let interactions: PendingInteractions;
 
   beforeEach(() => {
     requestAbortControllers = new Map();
+    interactions = new PendingInteractions();
 
     // Create mock context
     mockContext = {
@@ -83,6 +86,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
       const response = await handleChatRequest(
         mockContext,
         requestAbortControllers,
+        interactions,
       );
 
       expect(mockQuery).toHaveBeenCalledWith({
@@ -124,7 +128,11 @@ describe("Chat Handler - Permission Mode Tests", () => {
         throw: vi.fn(),
       } as any);
 
-      await handleChatRequest(mockContext, requestAbortControllers);
+      await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
 
       expect(mockQuery).toHaveBeenCalledWith({
         prompt: "Test message",
@@ -158,7 +166,11 @@ describe("Chat Handler - Permission Mode Tests", () => {
         throw: vi.fn(),
       } as any);
 
-      await handleChatRequest(mockContext, requestAbortControllers);
+      await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
 
       expect(mockQuery).toHaveBeenCalledWith({
         prompt: "Test message",
@@ -192,7 +204,11 @@ describe("Chat Handler - Permission Mode Tests", () => {
         throw: vi.fn(),
       } as any);
 
-      await handleChatRequest(mockContext, requestAbortControllers);
+      await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
 
       const queryCall = mockQuery.mock.calls[0][0];
       expect(queryCall.options).not.toHaveProperty("permissionMode");
@@ -225,7 +241,11 @@ describe("Chat Handler - Permission Mode Tests", () => {
         throw: vi.fn(),
       } as any);
 
-      await handleChatRequest(mockContext, requestAbortControllers);
+      await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
 
       expect(mockQuery).toHaveBeenCalledWith({
         prompt: "Test message with all params",
@@ -268,7 +288,11 @@ describe("Chat Handler - Permission Mode Tests", () => {
         throw: vi.fn(),
       } as any);
 
-      await handleChatRequest(mockContext, requestAbortControllers);
+      await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
 
       // Should strip the slash and pass "help" to SDK
       expect(mockQuery).toHaveBeenCalledWith({
@@ -303,7 +327,11 @@ describe("Chat Handler - Permission Mode Tests", () => {
         throw: vi.fn(),
       } as any);
 
-      await handleChatRequest(mockContext, requestAbortControllers);
+      await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
 
       expect(mockQuery).toHaveBeenCalledWith({
         prompt: "Regular message",
@@ -365,6 +393,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
       const response = await handleChatRequest(
         mockContext,
         requestAbortControllers,
+        interactions,
       );
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
@@ -426,6 +455,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
       const response = await handleChatRequest(
         mockContext,
         requestAbortControllers,
+        interactions,
       );
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
@@ -472,6 +502,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
       const response = await handleChatRequest(
         mockContext,
         requestAbortControllers,
+        interactions,
       );
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
@@ -524,6 +555,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
       const response = await handleChatRequest(
         mockContext,
         requestAbortControllers,
+        interactions,
       );
 
       // Read the response to ensure the generator completes
@@ -568,9 +600,201 @@ describe("Chat Handler - Permission Mode Tests", () => {
           }) as any,
       );
 
-      await handleChatRequest(mockContext, requestAbortControllers);
+      await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
 
       expect(capturedController).toBeInstanceOf(AbortController);
+    });
+  });
+
+  describe("AskUserQuestion interactions", () => {
+    const questions = [
+      {
+        question: "Which format?",
+        header: "Format",
+        options: [
+          { label: "Short", description: "Summary" },
+          { label: "Long", description: "Details" },
+        ],
+        multiSelect: false,
+      },
+    ];
+
+    it("emits a question and resumes the same stream with submitted answers", async () => {
+      let permissionResult: unknown;
+      mockQuery.mockImplementation(
+        ({ options }: any) =>
+          ({
+            [Symbol.asyncIterator]: async function* () {
+              permissionResult = await options.canUseTool(
+                "AskUserQuestion",
+                { questions },
+                {
+                  signal: options.abortController.signal,
+                  toolUseID: "tool-1",
+                  requestId: "control-1",
+                },
+              );
+              yield {
+                type: "result",
+                subtype: "success",
+                session_id: "session-1",
+              } as any;
+            },
+          }) as any,
+      );
+      mockContext.req.json = vi.fn().mockResolvedValue({
+        message: "Ask me",
+        requestId: "request-1",
+      });
+
+      const response = await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+      const reader = response.body!.getReader();
+      const firstRead = await reader.read();
+      const first = JSON.parse(
+        new TextDecoder().decode(firstRead.value).trim(),
+      );
+
+      expect(first).toMatchObject({
+        type: "ask_user_question",
+        questions: [{ question: "Which format?" }],
+      });
+      expect(
+        interactions.respond(first.interactionId, {
+          answers: { "Which format?": "Short" },
+        }),
+      ).toBe("ok");
+
+      while (!(await reader.read()).done) {
+        // Drain the original stream after the callback resumes.
+      }
+      expect(permissionResult).toEqual({
+        behavior: "allow",
+        updatedInput: {
+          questions,
+          answers: { "Which format?": "Short" },
+        },
+      });
+    });
+
+    it("denies non-question tools without creating an interaction", async () => {
+      let permissionResult: unknown;
+      mockQuery.mockImplementation(
+        ({ options }: any) =>
+          ({
+            [Symbol.asyncIterator]: async function* () {
+              permissionResult = await options.canUseTool(
+                "Bash",
+                { command: "pwd" },
+                {
+                  signal: options.abortController.signal,
+                  toolUseID: "tool-1",
+                  requestId: "control-1",
+                },
+              );
+            },
+          }) as any,
+      );
+      mockContext.req.json = vi.fn().mockResolvedValue({
+        message: "Run pwd",
+        requestId: "request-1",
+      });
+
+      const response = await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+      await response.text();
+
+      expect(permissionResult).toEqual({
+        behavior: "deny",
+        message: "Interactive approval is not supported for Bash",
+      });
+    });
+
+    it("denies invalid AskUserQuestion input", async () => {
+      let permissionResult: unknown;
+      mockQuery.mockImplementation(
+        ({ options }: any) =>
+          ({
+            [Symbol.asyncIterator]: async function* () {
+              permissionResult = await options.canUseTool(
+                "AskUserQuestion",
+                { questions: [] },
+                {
+                  signal: options.abortController.signal,
+                  toolUseID: "tool-1",
+                  requestId: "control-1",
+                },
+              );
+            },
+          }) as any,
+      );
+      mockContext.req.json = vi.fn().mockResolvedValue({
+        message: "Ask me",
+        requestId: "request-1",
+      });
+
+      const response = await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+      await response.text();
+
+      expect(permissionResult).toEqual({
+        behavior: "deny",
+        message: "Invalid AskUserQuestion input",
+      });
+    });
+
+    it("cleans up a pending question when the browser disconnects", async () => {
+      mockQuery.mockImplementation(
+        ({ options }: any) =>
+          ({
+            [Symbol.asyncIterator]: async function* () {
+              await options.canUseTool(
+                "AskUserQuestion",
+                { questions },
+                {
+                  signal: options.abortController.signal,
+                  toolUseID: "tool-1",
+                  requestId: "control-1",
+                },
+              );
+            },
+          }) as any,
+      );
+      mockContext.req.json = vi.fn().mockResolvedValue({
+        message: "Ask me",
+        requestId: "request-1",
+      });
+
+      const response = await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+      const reader = response.body!.getReader();
+      const firstRead = await reader.read();
+      const first = JSON.parse(
+        new TextDecoder().decode(firstRead.value).trim(),
+      );
+      expect(first.type).toBe("ask_user_question");
+
+      await reader.cancel();
+
+      expect(
+        interactions.respond(first.interactionId, { cancelled: true }),
+      ).toBe("not_found");
     });
   });
 });

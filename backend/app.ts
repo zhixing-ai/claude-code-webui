@@ -75,7 +75,9 @@ export function createApp(
     handleAbortRequest(c, requestAbortControllers),
   );
 
-  app.post("/api/chat", (c) => handleChatRequest(c, requestAbortControllers));
+  app.post("/api/chat", (c) =>
+    handleChatRequest(c, requestAbortControllers, interactions),
+  );
 
   app.post("/api/interactions/:interactionId/respond", (c) =>
     handleInteractionResponse(c, interactions),
