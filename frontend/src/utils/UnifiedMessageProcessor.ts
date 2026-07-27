@@ -14,7 +14,6 @@ import {
   createTodoMessageFromInput,
 } from "./messageConversion";
 import { isThinkingContentItem } from "./messageTypes";
-import { extractToolInfo, generateToolPatterns } from "./toolUtils";
 
 /**
  * Tool cache interface for tracking tool_use information
@@ -44,14 +43,6 @@ export interface ProcessingContext {
   // Init message handling
   shouldShowInitMessage?: () => boolean;
   onInitMessageShown?: () => void;
-
-  // Permission/Error handling
-  onPermissionError?: (
-    toolName: string,
-    patterns: string[],
-    toolUseId: string,
-  ) => void;
-  onAbortRequest?: () => void;
 }
 
 /**
@@ -62,13 +53,6 @@ export interface ProcessingOptions {
   isStreaming?: boolean;
   /** Override timestamp for batch processing */
   timestamp?: number;
-}
-
-/**
- * Helper function to detect tool use errors that should be displayed as regular results
- */
-function isToolUseError(content: string): boolean {
-  return content.includes("tool_use_error");
 }
 
 /**
@@ -107,37 +91,6 @@ export class UnifiedMessageProcessor {
   }
 
   /**
-   * Handle permission errors during streaming
-   */
-  private handlePermissionError(
-    contentItem: { tool_use_id?: string },
-    context: ProcessingContext,
-  ): void {
-    // Immediately abort the current request
-    if (context.onAbortRequest) {
-      context.onAbortRequest();
-    }
-
-    // Get cached tool_use information
-    const toolUseId = contentItem.tool_use_id || "";
-    const cachedToolInfo = this.getCachedToolInfo(toolUseId);
-
-    // Extract tool information for permission handling
-    const { toolName, commands } = extractToolInfo(
-      cachedToolInfo?.name,
-      cachedToolInfo?.input,
-    );
-
-    // Compute patterns based on tool type
-    const patterns = generateToolPatterns(toolName, commands);
-
-    // Notify parent component about permission error
-    if (context.onPermissionError) {
-      context.onPermissionError(toolName, patterns, toolUseId);
-    }
-  }
-
-  /**
    * Process tool_result content item
    */
   private processToolResult(
@@ -153,17 +106,7 @@ export class UnifiedMessageProcessor {
     const content =
       typeof contentItem.content === "string"
         ? contentItem.content
-        : JSON.stringify(contentItem.content);
-
-    // Check for permission errors - but skip tool use errors which should be displayed as regular results
-    if (
-      options.isStreaming &&
-      contentItem.is_error &&
-      !isToolUseError(content)
-    ) {
-      this.handlePermissionError(contentItem, context);
-      return;
-    }
+        : (JSON.stringify(contentItem.content) ?? "");
 
     // Get cached tool_use information to determine tool name
     const toolUseId = contentItem.tool_use_id || "";
@@ -172,6 +115,20 @@ export class UnifiedMessageProcessor {
 
     // Don't show tool_result for TodoWrite since we already show TodoMessage from tool_use
     if (toolName === "TodoWrite") {
+      return;
+    }
+
+    if (
+      toolName === "ExitPlanMode" &&
+      typeof (toolUseResult as { plan?: unknown } | undefined)?.plan ===
+        "string"
+    ) {
+      context.addMessage({
+        type: "plan",
+        plan: (toolUseResult as { plan: string }).plan,
+        toolUseId,
+        timestamp: options.timestamp || Date.now(),
+      });
       return;
     }
 
@@ -244,12 +201,14 @@ export class UnifiedMessageProcessor {
       );
     }
 
-    // Special handling for ExitPlanMode - create plan message instead of tool message
-    if (contentItem.name === "ExitPlanMode") {
-      const planContent = (contentItem.input?.plan as string) || "";
+    // Older transcripts included the plan in input; current SDKs return it in tool_use_result.
+    if (
+      contentItem.name === "ExitPlanMode" &&
+      typeof contentItem.input?.plan === "string"
+    ) {
       const planMessage = {
         type: "plan" as const,
-        plan: planContent,
+        plan: contentItem.input.plan,
         toolUseId: contentItem.id || "",
         timestamp: options.timestamp || Date.now(),
       };
@@ -429,9 +388,9 @@ export class UnifiedMessageProcessor {
     if (Array.isArray(messageContent)) {
       for (const contentItem of messageContent) {
         if (contentItem.type === "tool_result") {
-          // Extract toolUseResult from message if it exists
-          const toolUseResult = (message as { toolUseResult?: unknown })
-            .toolUseResult;
+          const toolUseResult =
+            message.tool_use_result ??
+            (message as { toolUseResult?: unknown }).toolUseResult;
           this.processToolResult(
             contentItem,
             localContext,

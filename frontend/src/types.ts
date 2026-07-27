@@ -47,6 +47,7 @@ export interface SDKUserMessage {
   parent_tool_use_id: string | null;
   session_id?: string;
   uuid?: string;
+  tool_use_result?: unknown;
 }
 
 export interface SDKResultMessage {
@@ -276,5 +277,6 @@ export type {
   ProjectInfo,
   AskUserQuestionItem,
   AskUserQuestionStreamResponse,
+  ToolPermissionStreamResponse,
   InteractionResponse,
 } from "../../shared/types";

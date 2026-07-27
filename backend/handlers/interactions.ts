@@ -1,16 +1,30 @@
-import type { PermissionResult } from "@anthropic-ai/claude-agent-sdk";
+import type {
+  PermissionResult,
+  PermissionUpdate,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { Context } from "hono";
 import type {
   AskUserQuestionItem,
   InteractionResponse,
 } from "../../shared/types.ts";
 
-type PendingInteraction = {
+type PendingInteractionBase = {
   requestId: string;
-  questions: AskUserQuestionItem[];
   resolve: (result: PermissionResult) => void;
   cleanup: () => void;
 };
+
+type PendingInteraction =
+  | (PendingInteractionBase & {
+      kind: "question";
+      questions: AskUserQuestionItem[];
+    })
+  | (PendingInteractionBase & {
+      kind: "permission";
+      toolName: string;
+      input: Record<string, unknown>;
+      suggestions?: PermissionUpdate[];
+    });
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -50,11 +64,43 @@ export class PendingInteractions {
     const response = new Promise<PermissionResult>((resolve) => {
       resolveResponse = resolve;
     });
-    const onAbort = () => this.cancelRequest(requestId, "Request aborted");
+    const onAbort = () =>
+      this.cancelInteraction(interactionId, "Request aborted");
 
     this.pending.set(interactionId, {
+      kind: "question",
       requestId,
       questions,
+      resolve: resolveResponse,
+      cleanup: () => signal.removeEventListener("abort", onAbort),
+    });
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) this.cancelRequest(requestId, "Request aborted");
+
+    return { interactionId, response };
+  }
+
+  createPermission(
+    requestId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    suggestions: PermissionUpdate[] | undefined,
+    signal: AbortSignal,
+  ) {
+    const interactionId = crypto.randomUUID();
+    let resolveResponse!: (result: PermissionResult) => void;
+    const response = new Promise<PermissionResult>((resolve) => {
+      resolveResponse = resolve;
+    });
+    const onAbort = () =>
+      this.cancelInteraction(interactionId, "Request aborted");
+
+    this.pending.set(interactionId, {
+      kind: "permission",
+      requestId,
+      toolName,
+      input,
+      suggestions,
       resolve: resolveResponse,
       cleanup: () => signal.removeEventListener("abort", onAbort),
     });
@@ -71,6 +117,56 @@ export class PendingInteractions {
     const pending = this.pending.get(interactionId);
     if (!pending) return "not_found";
 
+    if (pending.kind === "permission") {
+      if (
+        !isObject(body) ||
+        (body.permission !== "allow" && body.permission !== "deny") ||
+        (body.remember !== undefined && typeof body.remember !== "boolean") ||
+        (body.mode !== undefined &&
+          body.mode !== "default" &&
+          body.mode !== "acceptEdits") ||
+        (body.mode !== undefined && pending.toolName !== "ExitPlanMode") ||
+        (body.permission === "deny" &&
+          (body.remember !== undefined || body.mode !== undefined)) ||
+        (body.remember === true && !pending.suggestions?.length)
+      ) {
+        return "invalid";
+      }
+
+      if (body.permission === "deny") {
+        this.settle(interactionId, pending, {
+          behavior: "deny",
+          message: "User denied permission",
+        });
+        return "ok";
+      }
+
+      const mode: "default" | "acceptEdits" | undefined =
+        body.mode === "default"
+          ? "default"
+          : body.mode === "acceptEdits"
+            ? "acceptEdits"
+            : undefined;
+      const updatedPermissions: PermissionUpdate[] = [
+        ...(body.remember ? (pending.suggestions ?? []) : []),
+        ...(mode
+          ? [
+              {
+                type: "setMode" as const,
+                mode,
+                destination: "session" as const,
+              },
+            ]
+          : []),
+      ];
+      this.settle(interactionId, pending, {
+        behavior: "allow",
+        updatedInput: pending.input,
+        ...(updatedPermissions.length ? { updatedPermissions } : {}),
+      });
+      return "ok";
+    }
+
     if (isCancelled(body)) {
       this.settle(interactionId, pending, {
         behavior: "deny",
@@ -78,7 +174,6 @@ export class PendingInteractions {
       });
       return "ok";
     }
-
     const answers = readAnswers(body, pending.questions);
     if (!answers) return "invalid";
 
@@ -94,6 +189,13 @@ export class PendingInteractions {
       if (pending.requestId === requestId) {
         this.settle(interactionId, pending, { behavior: "deny", message });
       }
+    }
+  }
+
+  private cancelInteraction(interactionId: string, message: string) {
+    const pending = this.pending.get(interactionId);
+    if (pending) {
+      this.settle(interactionId, pending, { behavior: "deny", message });
     }
   }
 
@@ -124,7 +226,7 @@ export async function handleInteractionResponse(
     return c.json({ error: "Interaction not found" }, 404);
   }
   if (result === "invalid") {
-    return c.json({ error: "Every question requires an answer" }, 400);
+    return c.json({ error: "Invalid interaction response" }, 400);
   }
   return c.json({ ok: true });
 }

@@ -7,6 +7,7 @@ import type {
   ProjectInfo,
   PermissionMode,
   AskUserQuestionStreamResponse,
+  ToolPermissionStreamResponse,
   InteractionResponse,
 } from "../types";
 import { useClaudeStreaming } from "../hooks/useClaudeStreaming";
@@ -28,6 +29,7 @@ import {
 } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
+import { extractToolInfo, generateToolPatterns } from "../utils/toolUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 
 export function ChatPage() {
@@ -38,6 +40,10 @@ export function ChatPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [askUserQuestion, setAskUserQuestion] =
     useState<AskUserQuestionStreamResponse | null>(null);
+  const [toolPermissions, setToolPermissions] = useState<
+    ToolPermissionStreamResponse[]
+  >([]);
+  const toolPermission = toolPermissions[0] ?? null;
 
   // Extract and normalize working directory from URL
   const workingDirectory = (() => {
@@ -58,7 +64,7 @@ export function ChatPage() {
   const isLoadedConversation = !!sessionId && !isHistoryView;
 
   const { processStreamLine } = useClaudeStreaming();
-  const { abortRequest, createAbortHandler } = useAbortController();
+  const { abortRequest } = useAbortController();
 
   // Permission mode state management
   const { permissionMode, setPermissionMode } = usePermissionMode();
@@ -124,8 +130,6 @@ export function ChatPage() {
     permissionRequest,
     showPermissionRequest,
     closePermissionRequest,
-    allowToolTemporary,
-    allowToolPermanent,
     isPermissionMode,
     planModeRequest,
     showPlanModeRequest,
@@ -135,18 +139,29 @@ export function ChatPage() {
     onPermissionModeChange: setPermissionMode,
   });
 
-  const handlePermissionError = useCallback(
-    (toolName: string, patterns: string[], toolUseId: string) => {
-      // Check if this is an ExitPlanMode permission error
-      if (patterns.includes("ExitPlanMode")) {
-        // For ExitPlanMode, show plan permission interface instead of regular permission
-        showPlanModeRequest(""); // Empty plan content since it was already displayed
-      } else {
-        showPermissionRequest(toolName, patterns, toolUseId);
-      }
+  const handleToolPermission = useCallback(
+    (event: ToolPermissionStreamResponse) => {
+      setToolPermissions((current) => [...current, event]);
     },
-    [showPermissionRequest, showPlanModeRequest],
+    [],
   );
+
+  useEffect(() => {
+    if (!toolPermission) return;
+    if (toolPermission.toolName === "ExitPlanMode") {
+      showPlanModeRequest("");
+    } else {
+      const { toolName, commands } = extractToolInfo(
+        toolPermission.toolName,
+        toolPermission.input,
+      );
+      showPermissionRequest(
+        toolName,
+        generateToolPatterns(toolName, commands),
+        toolPermission.toolUseId,
+      );
+    }
+  }, [showPermissionRequest, showPlanModeRequest, toolPermission]);
 
   const sendMessage = useCallback(
     async (
@@ -195,7 +210,6 @@ export function ChatPage() {
 
         // Local state for this streaming session
         let localHasReceivedInit = false;
-        let shouldAbort = false;
         let streamBuffer = "";
 
         const streamingContext: StreamingContext = {
@@ -213,32 +227,25 @@ export function ChatPage() {
             localHasReceivedInit = received;
             setHasReceivedInit(received);
           },
-          onPermissionError: handlePermissionError,
-          onAbortRequest: async () => {
-            shouldAbort = true;
-            await createAbortHandler(requestId)();
-          },
           onAskUserQuestion: setAskUserQuestion,
+          onToolPermission: handleToolPermission,
         };
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done || shouldAbort) break;
+          if (done) break;
 
           streamBuffer += decoder.decode(value, { stream: true });
           const lines = streamBuffer.split("\n");
           streamBuffer = lines.pop() ?? "";
 
           for (const line of lines) {
-            if (shouldAbort) break;
             if (line.trim()) processStreamLine(line, streamingContext);
           }
-
-          if (shouldAbort) break;
         }
 
         streamBuffer += decoder.decode();
-        if (!shouldAbort && streamBuffer.trim()) {
+        if (streamBuffer.trim()) {
           processStreamLine(streamBuffer, streamingContext);
         }
       } catch (error) {
@@ -251,6 +258,9 @@ export function ChatPage() {
         });
       } finally {
         setAskUserQuestion(null);
+        setToolPermissions([]);
+        closePermissionRequest();
+        closePlanModeRequest();
         resetRequestState();
       }
     },
@@ -274,15 +284,26 @@ export function ChatPage() {
       setCurrentAssistantMessage,
       resetRequestState,
       processStreamLine,
-      handlePermissionError,
-      createAbortHandler,
+      handleToolPermission,
+      closePermissionRequest,
+      closePlanModeRequest,
     ],
   );
 
   const handleAbort = useCallback(() => {
     setAskUserQuestion(null);
+    setToolPermissions([]);
+    closePermissionRequest();
+    closePlanModeRequest();
     abortRequest(currentRequestId, isLoading, resetRequestState);
-  }, [abortRequest, currentRequestId, isLoading, resetRequestState]);
+  }, [
+    abortRequest,
+    closePermissionRequest,
+    closePlanModeRequest,
+    currentRequestId,
+    isLoading,
+    resetRequestState,
+  ]);
 
   const respondToQuestion = useCallback(
     async (body: InteractionResponse) => {
@@ -310,95 +331,119 @@ export function ChatPage() {
     [askUserQuestion],
   );
 
+  const respondToToolPermission = useCallback(
+    async (body: InteractionResponse) => {
+      if (!toolPermission) return false;
+
+      try {
+        const response = await fetch(
+          getInteractionResponseUrl(toolPermission.interactionId),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          },
+        );
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          throw new Error(
+            payload?.error || "Could not submit permission response",
+          );
+        }
+        setToolPermissions((current) => current.slice(1));
+        return true;
+      } catch (error) {
+        console.error("Failed to submit permission response:", error);
+        return false;
+      }
+    },
+    [toolPermission],
+  );
+
   // Permission request handlers
-  const handlePermissionAllow = useCallback(() => {
+  const handlePermissionAllow = useCallback(async () => {
     if (!permissionRequest) return;
-
-    // Add all patterns temporarily
-    let updatedAllowedTools = allowedTools;
-    permissionRequest.patterns.forEach((pattern) => {
-      updatedAllowedTools = allowToolTemporary(pattern, updatedAllowedTools);
-    });
-
-    closePermissionRequest();
-
-    if (currentSessionId) {
-      sendMessage("continue", updatedAllowedTools, true);
+    if (
+      await respondToToolPermission({
+        permission: "allow",
+      })
+    ) {
+      closePermissionRequest();
     }
-  }, [
-    permissionRequest,
-    currentSessionId,
-    sendMessage,
-    allowedTools,
-    allowToolTemporary,
-    closePermissionRequest,
-  ]);
+  }, [permissionRequest, respondToToolPermission, closePermissionRequest]);
 
-  const handlePermissionAllowPermanent = useCallback(() => {
+  const handlePermissionAllowPermanent = useCallback(async () => {
     if (!permissionRequest) return;
-
-    // Add all patterns permanently
-    let updatedAllowedTools = allowedTools;
-    permissionRequest.patterns.forEach((pattern) => {
-      updatedAllowedTools = allowToolPermanent(pattern, updatedAllowedTools);
-    });
-
-    closePermissionRequest();
-
-    if (currentSessionId) {
-      sendMessage("continue", updatedAllowedTools, true);
+    if (
+      await respondToToolPermission({
+        permission: "allow",
+        remember: true,
+      })
+    ) {
+      closePermissionRequest();
     }
-  }, [
-    permissionRequest,
-    currentSessionId,
-    sendMessage,
-    allowedTools,
-    allowToolPermanent,
-    closePermissionRequest,
-  ]);
+  }, [permissionRequest, respondToToolPermission, closePermissionRequest]);
 
-  const handlePermissionDeny = useCallback(() => {
-    closePermissionRequest();
-  }, [closePermissionRequest]);
+  const handlePermissionDeny = useCallback(async () => {
+    if (
+      await respondToToolPermission({
+        permission: "deny",
+      })
+    ) {
+      closePermissionRequest();
+    }
+  }, [closePermissionRequest, respondToToolPermission]);
 
   // Plan mode request handlers
-  const handlePlanAcceptWithEdits = useCallback(() => {
-    updatePermissionMode("acceptEdits");
-    closePlanModeRequest();
-    if (currentSessionId) {
-      sendMessage("accept", allowedTools, true, "acceptEdits");
+  const handlePlanAcceptWithEdits = useCallback(async () => {
+    if (
+      await respondToToolPermission({
+        permission: "allow",
+        mode: "acceptEdits",
+      })
+    ) {
+      updatePermissionMode("acceptEdits");
+      closePlanModeRequest();
     }
-  }, [
-    updatePermissionMode,
-    closePlanModeRequest,
-    currentSessionId,
-    sendMessage,
-    allowedTools,
-  ]);
+  }, [respondToToolPermission, updatePermissionMode, closePlanModeRequest]);
 
-  const handlePlanAcceptDefault = useCallback(() => {
-    updatePermissionMode("default");
-    closePlanModeRequest();
-    if (currentSessionId) {
-      sendMessage("accept", allowedTools, true, "default");
+  const handlePlanAcceptDefault = useCallback(async () => {
+    if (
+      await respondToToolPermission({
+        permission: "allow",
+        mode: "default",
+      })
+    ) {
+      updatePermissionMode("default");
+      closePlanModeRequest();
     }
-  }, [
-    updatePermissionMode,
-    closePlanModeRequest,
-    currentSessionId,
-    sendMessage,
-    allowedTools,
-  ]);
+  }, [respondToToolPermission, updatePermissionMode, closePlanModeRequest]);
 
-  const handlePlanKeepPlanning = useCallback(() => {
-    updatePermissionMode("plan");
-    closePlanModeRequest();
-  }, [updatePermissionMode, closePlanModeRequest]);
+  const handlePlanKeepPlanning = useCallback(async () => {
+    if (
+      await respondToToolPermission({
+        permission: "deny",
+      })
+    ) {
+      updatePermissionMode("plan");
+      closePlanModeRequest();
+    }
+  }, [closePlanModeRequest, respondToToolPermission, updatePermissionMode]);
 
   // Create permission data for inline permission interface
   const permissionData = permissionRequest
     ? {
         patterns: permissionRequest.patterns,
+        title: toolPermission?.title || toolPermission?.displayName,
+        description:
+          toolPermission?.description ||
+          toolPermission?.decisionReason ||
+          (toolPermission?.blockedPath
+            ? `Access requires permission for ${toolPermission.blockedPath}`
+            : undefined),
+        canRemember: toolPermission?.canRemember,
         onAllow: handlePermissionAllow,
         onAllowPermanent: handlePermissionAllowPermanent,
         onDeny: handlePermissionDeny,

@@ -684,8 +684,16 @@ describe("Chat Handler - Permission Mode Tests", () => {
       });
     });
 
-    it("denies non-question tools without creating an interaction", async () => {
+    it("emits a tool permission and resumes the same stream after approval", async () => {
       let permissionResult: unknown;
+      const suggestions = [
+        {
+          type: "addRules",
+          rules: [{ toolName: "Bash", ruleContent: "pwd" }],
+          behavior: "allow",
+          destination: "session",
+        },
+      ];
       mockQuery.mockImplementation(
         ({ options }: any) =>
           ({
@@ -697,8 +705,17 @@ describe("Chat Handler - Permission Mode Tests", () => {
                   signal: options.abortController.signal,
                   toolUseID: "tool-1",
                   requestId: "control-1",
+                  suggestions,
+                  title: "Claude wants to run pwd",
+                  displayName: "Run command",
+                  description: "Runs pwd in the project directory",
                 },
               );
+              yield {
+                type: "result",
+                subtype: "success",
+                session_id: "session-1",
+              } as any;
             },
           }) as any,
       );
@@ -712,11 +729,36 @@ describe("Chat Handler - Permission Mode Tests", () => {
         requestAbortControllers,
         interactions,
       );
-      await response.text();
+      const reader = response.body!.getReader();
+      const firstRead = await reader.read();
+      const first = JSON.parse(
+        new TextDecoder().decode(firstRead.value).trim(),
+      );
 
+      expect(first).toMatchObject({
+        type: "tool_permission",
+        toolName: "Bash",
+        input: { command: "pwd" },
+        toolUseId: "tool-1",
+        title: "Claude wants to run pwd",
+        displayName: "Run command",
+        description: "Runs pwd in the project directory",
+        canRemember: true,
+      });
+      expect(
+        interactions.respond(first.interactionId, {
+          permission: "allow",
+          remember: true,
+        }),
+      ).toBe("ok");
+
+      while (!(await reader.read()).done) {
+        // Drain the original stream after the callback resumes.
+      }
       expect(permissionResult).toEqual({
-        behavior: "deny",
-        message: "Interactive approval is not supported for Bash",
+        behavior: "allow",
+        updatedInput: { command: "pwd" },
+        updatedPermissions: suggestions,
       });
     });
 

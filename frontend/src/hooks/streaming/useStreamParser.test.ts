@@ -22,6 +22,7 @@ describe("useStreamParser", () => {
       shouldShowInitMessage: vi.fn(() => true),
       onInitMessageShown: vi.fn(),
       onAskUserQuestion: vi.fn(),
+      onToolPermission: vi.fn(),
     };
 
     vi.clearAllMocks();
@@ -68,7 +69,7 @@ describe("useStreamParser", () => {
       );
     });
 
-    it("should handle ExitPlanMode with empty plan content", () => {
+    it("renders current ExitPlanMode input without a fake empty plan", () => {
       const { result } = renderHook(() => useStreamParser());
 
       const assistantMessage: Extract<SDKMessage, { type: "assistant" }> = {
@@ -98,9 +99,8 @@ describe("useStreamParser", () => {
 
       expect(mockContext.addMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: "plan",
-          plan: "",
-          toolUseId: "plan-456",
+          type: "tool",
+          content: "ExitPlanMode",
           timestamp: expect.any(Number),
         }),
       );
@@ -136,9 +136,8 @@ describe("useStreamParser", () => {
 
       expect(mockContext.addMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: "plan",
-          plan: "",
-          toolUseId: "plan-789",
+          type: "tool",
+          content: "ExitPlanMode",
           timestamp: expect.any(Number),
         }),
       );
@@ -216,10 +215,65 @@ describe("useStreamParser", () => {
 
       expect(mockContext.addMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: "plan",
-          plan: { invalid: "object" },
-          toolUseId: "plan-invalid",
+          type: "tool",
+          content: "ExitPlanMode(1 arg)",
           timestamp: expect.any(Number),
+        }),
+      );
+    });
+
+    it("reads the plan from current SDK tool_use_result output", () => {
+      const { result } = renderHook(() => useStreamParser());
+
+      result.current.processStreamLine(
+        JSON.stringify({
+          type: "claude_json",
+          data: {
+            type: "assistant",
+            parent_tool_use_id: null,
+            message: {
+              content: [
+                {
+                  type: "tool_use",
+                  id: "plan-output",
+                  name: "ExitPlanMode",
+                  input: {},
+                },
+              ],
+            },
+          },
+        }),
+        mockContext,
+      );
+      result.current.processStreamLine(
+        JSON.stringify({
+          type: "claude_json",
+          data: {
+            type: "user",
+            parent_tool_use_id: null,
+            tool_use_result: {
+              plan: "1. Update protocol\n2. Run tests",
+              isAgent: false,
+            },
+            message: {
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: "plan-output",
+                  content: "Plan approved",
+                },
+              ],
+            },
+          },
+        }),
+        mockContext,
+      );
+
+      expect(mockContext.addMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          type: "plan",
+          plan: "1. Update protocol\n2. Run tests",
+          toolUseId: "plan-output",
         }),
       );
     });
@@ -292,6 +346,73 @@ describe("useStreamParser", () => {
 
       expect(mockContext.onAskUserQuestion).toHaveBeenCalledWith(event);
       expect(mockContext.addMessage).not.toHaveBeenCalled();
+    });
+
+    it("forwards tool permission events without creating a chat message", () => {
+      const { result } = renderHook(() => useStreamParser());
+      const event = {
+        type: "tool_permission" as const,
+        interactionId: "interaction-2",
+        toolName: "Bash",
+        input: { command: "npm test" },
+        toolUseId: "tool-2",
+        title: "Claude wants to run npm test",
+        canRemember: true,
+      };
+
+      result.current.processStreamLine(JSON.stringify(event), mockContext);
+
+      expect(mockContext.onToolPermission).toHaveBeenCalledWith(event);
+      expect(mockContext.addMessage).not.toHaveBeenCalled();
+    });
+
+    it("uses snake_case structured tool output and tolerates missing content", () => {
+      const { result } = renderHook(() => useStreamParser());
+      const toolUse = {
+        type: "assistant",
+        parent_tool_use_id: null,
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "bash-result",
+              name: "Bash",
+              input: { command: "pwd" },
+            },
+          ],
+        },
+      };
+      const toolResult = {
+        type: "user",
+        parent_tool_use_id: null,
+        tool_use_result: { stdout: "/tmp/project", stderr: "" },
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "bash-result",
+            },
+          ],
+        },
+      };
+
+      result.current.processStreamLine(
+        JSON.stringify({ type: "claude_json", data: toolUse }),
+        mockContext,
+      );
+      result.current.processStreamLine(
+        JSON.stringify({ type: "claude_json", data: toolResult }),
+        mockContext,
+      );
+
+      expect(mockContext.addMessage).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          type: "tool_result",
+          toolName: "Bash",
+          content: "",
+          toolUseResult: { stdout: "/tmp/project", stderr: "" },
+        }),
+      );
     });
 
     it("should handle malformed JSON gracefully", () => {

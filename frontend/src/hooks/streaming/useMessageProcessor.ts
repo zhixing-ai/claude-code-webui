@@ -2,6 +2,7 @@ import type {
   AllMessage,
   AskUserQuestionStreamResponse,
   ChatMessage,
+  ToolPermissionStreamResponse,
 } from "../../types";
 import { useMessageConverter } from "../useMessageConverter";
 
@@ -15,13 +16,8 @@ export interface StreamingContext {
   onInitMessageShown?: () => void;
   hasReceivedInit?: boolean;
   setHasReceivedInit?: (received: boolean) => void;
-  onPermissionError?: (
-    toolName: string,
-    patterns: string[],
-    toolUseId: string,
-  ) => void;
-  onAbortRequest?: () => void;
   onAskUserQuestion?: (event: AskUserQuestionStreamResponse) => void;
+  onToolPermission?: (event: ToolPermissionStreamResponse) => void;
 }
 
 /**

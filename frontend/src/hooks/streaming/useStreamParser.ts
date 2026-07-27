@@ -41,10 +41,6 @@ export function useStreamParser() {
         // Init message handling
         shouldShowInitMessage: context.shouldShowInitMessage,
         onInitMessageShown: context.onInitMessageShown,
-
-        // Permission/Error handling
-        onPermissionError: context.onPermissionError,
-        onAbortRequest: context.onAbortRequest,
       };
     },
     [],
@@ -100,6 +96,8 @@ export function useStreamParser() {
 
         if (data.type === "ask_user_question") {
           context.onAskUserQuestion?.(data);
+        } else if (data.type === "tool_permission") {
+          context.onToolPermission?.(data);
         } else if (data.type === "claude_json" && data.data) {
           // data.data is already an SDKMessage object, no need to parse
           const claudeData = data.data as SDKMessage;

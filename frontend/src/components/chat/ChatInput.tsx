@@ -9,6 +9,9 @@ import type { AskUserQuestionItem, PermissionMode } from "../../types";
 
 interface PermissionData {
   patterns: string[];
+  title?: string;
+  description?: string;
+  canRemember?: boolean;
   onAllow: () => void;
   onAllowPermanent: () => void;
   onDeny: () => void;
@@ -216,6 +219,9 @@ export function ChatInput({
     return (
       <PermissionInputPanel
         patterns={permissionData.patterns}
+        title={permissionData.title}
+        description={permissionData.description}
+        canRemember={permissionData.canRemember}
         onAllow={permissionData.onAllow}
         onAllowPermanent={permissionData.onAllowPermanent}
         onDeny={permissionData.onDeny}

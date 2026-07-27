@@ -77,6 +77,9 @@ function renderPermanentButtonText(patterns: string[]): string {
 
 interface PermissionInputPanelProps {
   patterns: string[];
+  title?: string;
+  description?: string;
+  canRemember?: boolean;
   onAllow: () => void;
   onAllowPermanent: () => void;
   onDeny: () => void;
@@ -93,6 +96,9 @@ interface PermissionInputPanelProps {
 
 export function PermissionInputPanel({
   patterns,
+  title,
+  description,
+  canRemember = true,
   onAllow,
   onAllowPermanent,
   onDeny,
@@ -128,7 +134,9 @@ export function PermissionInputPanel({
     if (externalSelectedOption !== undefined) return;
 
     // Define options array inside useEffect to avoid unnecessary re-renders
-    const options = ["allow", "allowPermanent", "deny"] as const;
+    const options: ("allow" | "allowPermanent" | "deny")[] = canRemember
+      ? ["allow", "allowPermanent", "deny"]
+      : ["allow", "deny"];
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown") {
@@ -166,6 +174,7 @@ export function PermissionInputPanel({
     onDeny,
     updateSelectedOption,
     externalSelectedOption,
+    canRemember,
   ]);
 
   return (
@@ -182,7 +191,16 @@ export function PermissionInputPanel({
 
       {/* Content */}
       <div className="mb-4">
-        {renderPermissionContent(patterns)}
+        {title ? (
+          <p className="text-slate-600 dark:text-slate-300 mb-2">{title}</p>
+        ) : (
+          renderPermissionContent(patterns)
+        )}
+        {description && (
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
+            {description}
+          </p>
+        )}
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Do you want to proceed? (Press ESC to deny)
         </p>
@@ -227,42 +245,44 @@ export function PermissionInputPanel({
           </span>
         </button>
 
-        <button
-          onClick={() => {
-            updateSelectedOption("allowPermanent");
-            onAllowPermanent();
-          }}
-          onFocus={() => updateSelectedOption("allowPermanent")}
-          onBlur={() => {
-            if (!isExternallyControlled) {
-              setSelectedOption(null);
-            }
-          }}
-          onMouseEnter={() => updateSelectedOption("allowPermanent")}
-          onMouseLeave={() => {
-            if (!isExternallyControlled) {
-              setSelectedOption(null);
-            }
-          }}
-          className={getButtonClassName(
-            "allowPermanent",
-            `w-full p-3 rounded-lg cursor-pointer transition-all duration-200 text-left focus:outline-none ${
-              effectiveSelectedOption === "allowPermanent"
-                ? "bg-green-50 dark:bg-green-900/20 border-2 border-green-500 dark:border-green-400 shadow-sm"
-                : "border-2 border-transparent"
-            }`,
-          )}
-        >
-          <span
-            className={`text-sm font-medium ${
-              effectiveSelectedOption === "allowPermanent"
-                ? "text-green-700 dark:text-green-300"
-                : "text-slate-700 dark:text-slate-300"
-            }`}
+        {canRemember && (
+          <button
+            onClick={() => {
+              updateSelectedOption("allowPermanent");
+              onAllowPermanent();
+            }}
+            onFocus={() => updateSelectedOption("allowPermanent")}
+            onBlur={() => {
+              if (!isExternallyControlled) {
+                setSelectedOption(null);
+              }
+            }}
+            onMouseEnter={() => updateSelectedOption("allowPermanent")}
+            onMouseLeave={() => {
+              if (!isExternallyControlled) {
+                setSelectedOption(null);
+              }
+            }}
+            className={getButtonClassName(
+              "allowPermanent",
+              `w-full p-3 rounded-lg cursor-pointer transition-all duration-200 text-left focus:outline-none ${
+                effectiveSelectedOption === "allowPermanent"
+                  ? "bg-green-50 dark:bg-green-900/20 border-2 border-green-500 dark:border-green-400 shadow-sm"
+                  : "border-2 border-transparent"
+              }`,
+            )}
           >
-            {renderPermanentButtonText(patterns)}
-          </span>
-        </button>
+            <span
+              className={`text-sm font-medium ${
+                effectiveSelectedOption === "allowPermanent"
+                  ? "text-green-700 dark:text-green-300"
+                  : "text-slate-700 dark:text-slate-300"
+              }`}
+            >
+              {renderPermanentButtonText(patterns)}
+            </span>
+          </button>
+        )}
 
         <button
           onClick={() => {

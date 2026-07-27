@@ -132,31 +132,58 @@ export async function handleChatRequest(
             ...(chatRequest.permissionMode
               ? { permissionMode: chatRequest.permissionMode }
               : {}),
-            canUseTool: async (toolName, input) => {
-              if (toolName !== "AskUserQuestion") {
-                return {
-                  behavior: "deny",
-                  message: `Interactive approval is not supported for ${toolName}`,
-                };
+            canUseTool: async (toolName, input, permissionOptions) => {
+              if (toolName === "AskUserQuestion") {
+                const questions = readQuestions(input);
+                if (!questions) {
+                  return {
+                    behavior: "deny",
+                    message: "Invalid AskUserQuestion input",
+                  };
+                }
+
+                const pending = interactions.create(
+                  chatRequest.requestId,
+                  questions,
+                  permissionOptions.signal,
+                );
+                send({
+                  type: "ask_user_question",
+                  interactionId: pending.interactionId,
+                  questions,
+                });
+                return pending.response;
               }
 
-              const questions = readQuestions(input);
-              if (!questions) {
-                return {
-                  behavior: "deny",
-                  message: "Invalid AskUserQuestion input",
-                };
-              }
-
-              const pending = interactions.create(
+              const pending = interactions.createPermission(
                 chatRequest.requestId,
-                questions,
-                requestAbortController!.signal,
+                toolName,
+                input,
+                permissionOptions.suggestions,
+                permissionOptions.signal,
               );
               send({
-                type: "ask_user_question",
+                type: "tool_permission",
                 interactionId: pending.interactionId,
-                questions,
+                toolName,
+                input,
+                toolUseId: permissionOptions.toolUseID,
+                canRemember: Boolean(permissionOptions.suggestions?.length),
+                ...(permissionOptions.title
+                  ? { title: permissionOptions.title }
+                  : {}),
+                ...(permissionOptions.displayName
+                  ? { displayName: permissionOptions.displayName }
+                  : {}),
+                ...(permissionOptions.description
+                  ? { description: permissionOptions.description }
+                  : {}),
+                ...(permissionOptions.blockedPath
+                  ? { blockedPath: permissionOptions.blockedPath }
+                  : {}),
+                ...(permissionOptions.decisionReason
+                  ? { decisionReason: permissionOptions.decisionReason }
+                  : {}),
               });
               return pending.response;
             },

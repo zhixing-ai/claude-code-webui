@@ -17,13 +17,34 @@ export interface AskUserQuestionStreamResponse {
   questions: AskUserQuestionItem[];
 }
 
+export interface ToolPermissionStreamResponse {
+  type: "tool_permission";
+  interactionId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  toolUseId: string;
+  canRemember: boolean;
+  title?: string;
+  displayName?: string;
+  description?: string;
+  blockedPath?: string;
+  decisionReason?: string;
+}
+
 export type InteractionResponse =
   | { answers: Record<string, string> }
-  | { cancelled: true };
+  | { cancelled: true }
+  | {
+      permission: "allow";
+      remember?: boolean;
+      mode?: "default" | "acceptEdits";
+    }
+  | { permission: "deny" };
 
 export type StreamResponse =
   | { type: "claude_json"; data: unknown }
   | AskUserQuestionStreamResponse
+  | ToolPermissionStreamResponse
   | { type: "error"; error?: string }
   | { type: "done" }
   | { type: "aborted" };
