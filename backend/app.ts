@@ -85,6 +85,8 @@ export function createApp(
   );
 
   // API routes
+  app.get("/api/health", (c) => c.json({ status: "ok" }));
+
   app.get("/api/projects", (c) => handleProjectsRequest(c));
   app.post("/api/projects", (c) => handleCreateProjectRequest(c));
 

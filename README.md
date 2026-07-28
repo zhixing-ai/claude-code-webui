@@ -191,6 +191,7 @@ PORT=9000 DEBUG=true claude-code-webui
 run-oriented endpoints for API clients:
 
 ```text
+GET  /api/health
 POST /api/runs
 GET  /api/runs/:runId
 GET  /api/runs/:runId/events?after=<sequence>
