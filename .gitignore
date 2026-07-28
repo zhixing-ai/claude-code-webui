@@ -4,6 +4,9 @@
 # Build artifacts
 dist/
 backend/dist/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
 # Demo recordings and Playwright artifacts
 frontend/demo-recordings/

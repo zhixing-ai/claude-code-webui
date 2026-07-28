@@ -275,6 +275,8 @@ export type {
   ChatRequest,
   ProjectsResponse,
   ProjectInfo,
+  CreateProjectRequest,
+  CreateProjectResponse,
   AskUserQuestionItem,
   AskUserQuestionStreamResponse,
   ToolPermissionStreamResponse,

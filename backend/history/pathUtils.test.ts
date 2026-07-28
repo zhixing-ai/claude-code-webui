@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getEncodedProjectName } from "./pathUtils.ts";
+import { encodeProjectPath, getEncodedProjectName } from "./pathUtils.ts";
 
 describe("pathUtils", () => {
   it("getEncodedProjectName with dots and slashes", async () => {
@@ -7,7 +7,7 @@ describe("pathUtils", () => {
     const testPath = "/Users/test/.example/github.com/project-name";
     const result = await getEncodedProjectName(testPath);
 
-    const expectedEncoding = testPath.replace(/\/$/, "").replace(/[/.]/g, "-");
+    const expectedEncoding = encodeProjectPath(testPath);
 
     // Should convert both '/' and '.' to '-'
     expect(expectedEncoding).toBe(

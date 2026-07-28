@@ -24,18 +24,22 @@ lefthook run pre-commit
 
 ## Architecture
 
-### Backend (Deno/Node.js)
+### Backend (Node.js)
 
 - **Location**: `backend/` | **Port**: 8080 (configurable)
 - **Technology**: TypeScript + Hono framework with runtime abstraction
 - **Purpose**: Executes `claude` commands and streams JSON responses
 
-**Key Features**: Runtime abstraction, modular architecture, structured logging, universal Claude CLI path detection, session continuity, single binary distribution, comprehensive testing.
+**Key Features**: Modular architecture, structured logging, universal Claude CLI path detection, resumable runs, SQLite state persistence, session continuity, comprehensive testing.
 
 **API Endpoints**:
 
 - `GET /api/projects` - List available project directories
 - `POST /api/chat` - Chat messages with streaming responses (`{ message, sessionId?, requestId, allowedTools?, workingDirectory? }`)
+- `POST /api/runs` - Start a detached Claude run
+- `GET /api/runs/:runId/events` - Replay and follow run events
+- `GET /api/sessions` - List Claude sessions
+- `GET|POST /api/sessions/:sessionId/messages` - Read or continue a session
 - `POST /api/abort/:requestId` - Abort ongoing requests
 - `GET /api/projects/:encodedProjectName/histories` - Conversation histories
 - `GET /api/projects/:encodedProjectName/histories/:sessionId` - Specific conversation history
@@ -114,7 +118,7 @@ Playwright MCP server integration for automated browser testing and demo verific
 
 ### Prerequisites
 
-- Backend: Deno or Node.js (20.0.0+)
+- Backend: Node.js 22.5.0+
 - Frontend: Node.js
 - Claude CLI tool installed
 - dotenvx: `npm install -g @dotenvx/dotenvx`
@@ -132,7 +136,6 @@ PORT=9000
 ```bash
 # Backend
 cd backend
-deno task dev        # Deno
 npm run dev          # Node.js
 # Add --debug for debug logging
 

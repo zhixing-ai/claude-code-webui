@@ -6,6 +6,10 @@
 import { readDir } from "../utils/fs.ts";
 import { getHomeDir } from "../utils/os.ts";
 
+export function encodeProjectPath(projectPath: string): string {
+  return projectPath.replace(/\/$/, "").replace(/[/\\:._]/g, "-");
+}
+
 /**
  * Get the encoded directory name for a project path by checking what actually exists
  * Example: "/Users/sugyan/tmp/" → "-Users-sugyan-tmp"
@@ -30,9 +34,8 @@ export async function getEncodedProjectName(
     }
 
     // Convert project path to expected encoded format for comparison
-    const normalizedPath = projectPath.replace(/\/$/, "");
     // Claude converts '/', '\', ':', '.', and '_' to '-'
-    const expectedEncoded = normalizedPath.replace(/[/\\:._]/g, "-");
+    const expectedEncoded = encodeProjectPath(projectPath);
 
     // Find exact match - if not found, return null
     if (entries.includes(expectedEncoded)) {

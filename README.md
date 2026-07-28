@@ -124,9 +124,8 @@ chmod +x claude-code-webui-macos-arm64
 ### Option 3: Development Mode
 
 ```bash
-# Backend (choose one)
-cd backend && deno task dev    # Deno runtime
-cd backend && npm run dev      # Node.js runtime
+# Backend
+cd backend && npm run dev
 
 # Frontend (new terminal)
 cd frontend && npm run dev
@@ -137,7 +136,7 @@ cd frontend && npm run dev
 ### Prerequisites
 
 - ✅ **Claude CLI** installed and authenticated ([Get it here](https://github.com/anthropics/claude-code))
-- ✅ **Node.js >=20.0.0** (for npm installation) or **Deno** (for development)
+- ✅ **Node.js >=22.5.0**
 - ✅ **Modern browser** (Chrome, Firefox, Safari, Edge)
 - ✅ **dotenvx** (for development): [Install guide](https://dotenvx.com/docs/install)
 
@@ -152,13 +151,16 @@ The backend server supports the following command-line options:
 | `-p, --port <port>`    | Port to listen on                                         | 8080        |
 | `--host <host>`        | Host address to bind to (use 0.0.0.0 for all interfaces)  | 127.0.0.1   |
 | `--claude-path <path>` | Path to claude executable (overrides automatic detection) | Auto-detect |
+| `--database <path>`    | SQLite state database                                     | `~/.claude-code-webui/state.sqlite` |
 | `-d, --debug`          | Enable debug mode                                         | false       |
 | `-h, --help`           | Show help message                                         | -           |
 | `-v, --version`        | Show version                                              | -           |
 
 ### Environment Variables
 
-- `PORT` - Same as `--port`
+- `CLAUDE_CODE_WEBUI_PORT` (or `PORT`) - Same as `--port`
+- `CLAUDE_CODE_WEBUI_HOST` (or `HOST`) - Same as `--host`
+- `CLAUDE_CODE_WEBUI_DB` - Same as `--database`
 - `DEBUG` - Same as `--debug`
 
 ### Examples
@@ -182,6 +184,66 @@ claude-code-webui --claude-path /path/to/claude
 # Using environment variables
 PORT=9000 DEBUG=true claude-code-webui
 ```
+
+### Session API and durable runs
+
+`POST /api/chat` remains compatible with the Web UI. The backend also exposes
+run-oriented endpoints for API clients:
+
+```text
+POST /api/runs
+GET  /api/runs/:runId
+GET  /api/runs/:runId/events?after=<sequence>
+POST /api/runs/:runId/cancel
+GET  /api/sessions
+GET  /api/sessions/:sessionId/messages
+POST /api/sessions/:sessionId/messages
+GET  /api/runs/:runId/interactions
+POST /api/interactions/:interactionId/respond
+```
+
+Claude execution is independent from the browser event stream. If the browser
+or reverse proxy disconnects, reconnect to the run events endpoint with the
+last received sequence. The Web UI does this automatically for transient
+connection failures while the page remains open.
+
+Runs, stream events, interaction status, session metadata, and mirrored Claude
+transcripts are stored in SQLite. A pending tool callback still cannot survive
+the Claude process itself exiting; after a server restart it is reported as
+interrupted and the session can be continued with the session messages API.
+
+---
+
+## 🐳 Container Image
+
+The repository Dockerfile extends the sandbox base image, installs
+`claude-code-webui` globally, and leaves the container idle until commands are
+run inside it. Start the Web UI on demand with:
+
+```bash
+claude-code-webui
+```
+
+The container defaults are `0.0.0.0:8080`. The command only starts the HTTP
+server; it does not open a browser. Publish or route port `8080`, then open the
+container's remote address from your own browser.
+
+To run the Web UI as the container's primary process:
+
+```bash
+docker build -t claude-code-webui-sandbox .
+docker run --rm -p 8080:8080 \
+  claude-code-webui-sandbox claude-code-webui
+```
+
+This interface has no built-in authentication. Do not expose it directly to
+the public internet without an authenticated reverse proxy or equivalent
+access control.
+
+Mount `~/.claude-code-webui`, `~/.claude`, and project workspaces on persistent
+storage when sessions must survive sandbox recreation. SQLite inside an
+ephemeral container filesystem only survives process restarts in that same
+container.
 
 ---
 

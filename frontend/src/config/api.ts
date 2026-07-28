@@ -7,6 +7,7 @@ export const API_CONFIG = {
     HISTORIES: "/api/projects",
     CONVERSATIONS: "/api/projects",
     INTERACTIONS: "/api/interactions",
+    RUNS: "/api/runs",
   },
 } as const;
 
@@ -27,6 +28,18 @@ export const getChatUrl = () => {
 
 export const getInteractionResponseUrl = (interactionId: string) => {
   return `${API_CONFIG.ENDPOINTS.INTERACTIONS}/${encodeURIComponent(interactionId)}/respond`;
+};
+
+export const getRunEventsUrl = (runId: string, after = 0) => {
+  return `${API_CONFIG.ENDPOINTS.RUNS}/${encodeURIComponent(runId)}/events?after=${after}`;
+};
+
+export const getRunUrl = (runId: string) => {
+  return `${API_CONFIG.ENDPOINTS.RUNS}/${encodeURIComponent(runId)}`;
+};
+
+export const getSessionsUrl = (directory: string) => {
+  return `/api/sessions?directory=${encodeURIComponent(directory)}`;
 };
 
 // Helper function to get projects URL

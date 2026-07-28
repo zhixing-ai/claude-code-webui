@@ -12,7 +12,7 @@ export function handleAbortRequest(
   c: Context,
   requestAbortControllers: Map<string, AbortController>,
 ) {
-  const requestId = c.req.param("requestId");
+  const requestId = c.req.param("requestId") ?? c.req.param("runId");
 
   if (!requestId) {
     return c.json({ error: "Request ID is required" }, 400);

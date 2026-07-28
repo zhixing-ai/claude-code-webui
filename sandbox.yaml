@@ -1,0 +1,53 @@
+apiVersion: agents.kruise.io/v1alpha1
+kind: SandboxSet
+metadata:
+  annotations:
+  labels:
+    alibabacloud.com/acs: "true"
+    alibabacloud.com/compute-class: agent-sandbox
+    alibabacloud.com/compute-qos: default
+    app: salesai
+    mentalos.zhixing.ai/template-purpose: salesai
+    sandbox-provider: acs-agent-sandbox
+  name: mentalos-salesai
+  namespace: merchant-ai-dev
+spec:
+  persistentContents:
+    - filesystem
+  replicas: 1
+  runtimes:
+    - name: agent-runtime
+    - name: csi
+  scaleStrategy:
+    maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        alibabacloud.com/acs: "true"
+        alibabacloud.com/compute-class: agent-sandbox
+        alibabacloud.com/compute-qos: default
+        sandbox-provider: acs-agent-sandbox
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - image: crpi-ibyis3h0u7rejkkz.cn-hangzhou.personal.cr.aliyuncs.com/merchant-ai-hangzhou/claude-code-backend:v1
+          imagePullPolicy: IfNotPresent
+          name: sandbox
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 500m
+              memory: 1Gi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      imagePullSecrets:
+        - name: acr-credential
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+  updateStrategy:
+    maxUnavailable: 20%

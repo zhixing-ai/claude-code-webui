@@ -61,6 +61,25 @@ export async function writeTextFile(
 }
 
 /**
+ * Create a directory and any missing parents
+ */
+export async function makeDir(path: string): Promise<void> {
+  await fs.mkdir(path, { recursive: true });
+}
+
+/**
+ * Check whether a cross-runtime file system error means "not found"
+ */
+export function isNotFoundError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (("code" in error && error.code === "ENOENT") ||
+      error.name === "NotFound" ||
+      /no such file/i.test(error.message))
+  );
+}
+
+/**
  * Check if file or directory exists
  */
 export async function exists(path: string): Promise<boolean> {

@@ -12,10 +12,13 @@ import {
   type ConfigContext,
   createConfigMiddleware,
 } from "./middleware/config.ts";
-import { handleProjectsRequest } from "./handlers/projects.ts";
+import {
+  handleCreateProjectRequest,
+  handleProjectsRequest,
+} from "./handlers/projects.ts";
 import { handleHistoriesRequest } from "./handlers/histories.ts";
 import { handleConversationRequest } from "./handlers/conversations.ts";
-import { handleChatRequest } from "./handlers/chat.ts";
+import { ChatRunManager, handleChatRequest } from "./handlers/chat.ts";
 import { handleAbortRequest } from "./handlers/abort.ts";
 import {
   handleInteractionResponse,
@@ -23,11 +26,25 @@ import {
 } from "./handlers/interactions.ts";
 import { logger } from "./utils/logger.ts";
 import { readBinaryFile } from "./utils/fs.ts";
+import type { AppStateStore } from "./state/types.ts";
+import {
+  handleCreateRunRequest,
+  handleInteractionRequest,
+  handleRunEventsRequest,
+  handleRunInteractionsRequest,
+  handleRunRequest,
+} from "./handlers/runs.ts";
+import {
+  handleResumeSessionRequest,
+  handleSessionMessagesRequest,
+  handleSessionsRequest,
+} from "./handlers/sessions.ts";
 
 export interface AppConfig {
   debugMode: boolean;
   staticPath: string;
   cliPath: string; // Actual CLI script path detected by validateClaudeCli
+  stateStore?: AppStateStore;
 }
 
 export function createApp(
@@ -38,7 +55,13 @@ export function createApp(
 
   // Store AbortControllers for each request (shared with chat handler)
   const requestAbortControllers = new Map<string, AbortController>();
-  const interactions = new PendingInteractions();
+  const interactions = new PendingInteractions(config.stateStore);
+  const runs = new ChatRunManager(
+    config.cliPath,
+    interactions,
+    requestAbortControllers,
+    config.stateStore,
+  );
 
   // CORS middleware
   app.use(
@@ -57,11 +80,13 @@ export function createApp(
       debugMode: config.debugMode,
       runtime,
       cliPath: config.cliPath,
+      stateStore: config.stateStore,
     }),
   );
 
   // API routes
   app.get("/api/projects", (c) => handleProjectsRequest(c));
+  app.post("/api/projects", (c) => handleCreateProjectRequest(c));
 
   app.get("/api/projects/:encodedProjectName/histories", (c) =>
     handleHistoriesRequest(c),
@@ -74,13 +99,34 @@ export function createApp(
   app.post("/api/abort/:requestId", (c) =>
     handleAbortRequest(c, requestAbortControllers),
   );
+  app.post("/api/runs/:runId/cancel", (c) =>
+    handleAbortRequest(c, requestAbortControllers),
+  );
 
-  app.post("/api/chat", (c) =>
-    handleChatRequest(c, requestAbortControllers, interactions),
+  app.post("/api/chat", (c) => handleChatRequest(c, runs));
+
+  app.post("/api/runs", (c) => handleCreateRunRequest(c, runs));
+  app.get("/api/runs/:runId", (c) => handleRunRequest(c, config.stateStore));
+  app.get("/api/runs/:runId/events", (c) =>
+    handleRunEventsRequest(c, runs, config.stateStore),
+  );
+  app.get("/api/runs/:runId/interactions", (c) =>
+    handleRunInteractionsRequest(c, config.stateStore),
+  );
+
+  app.get("/api/sessions", (c) => handleSessionsRequest(c, config.stateStore));
+  app.get("/api/sessions/:sessionId/messages", (c) =>
+    handleSessionMessagesRequest(c, config.stateStore),
+  );
+  app.post("/api/sessions/:sessionId/messages", (c) =>
+    handleResumeSessionRequest(c, runs, config.stateStore),
   );
 
   app.post("/api/interactions/:interactionId/respond", (c) =>
     handleInteractionResponse(c, interactions),
+  );
+  app.get("/api/interactions/:interactionId", (c) =>
+    handleInteractionRequest(c, config.stateStore),
   );
 
   // Static file serving with SPA fallback

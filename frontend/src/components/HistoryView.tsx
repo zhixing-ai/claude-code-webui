@@ -1,38 +1,48 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import type { ConversationSummary } from "../../../shared/types";
-import { getHistoriesUrl } from "../config/api";
+import { useEffect, useState } from "react";
+import {
+  ChatBubbleLeftRightIcon,
+  PlusIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
+import type { SessionSummary, SessionsResponse } from "../../../shared/types";
+import { getSessionsUrl } from "../config/api";
 
 interface HistoryViewProps {
-  workingDirectory: string;
-  encodedName: string | null;
-  onBack: () => void;
+  workingDirectory?: string;
+  currentSessionId: string | null;
+  disabled: boolean;
+  refreshToken: number;
+  onSelect: (sessionId: string) => void;
+  onNew: () => void;
+  onClose: () => void;
 }
 
-export function HistoryView({ encodedName }: HistoryViewProps) {
-  const navigate = useNavigate();
-  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+export function HistoryView({
+  workingDirectory,
+  currentSessionId,
+  disabled,
+  refreshToken,
+  onSelect,
+  onNew,
+  onClose,
+}: HistoryViewProps) {
+  const [conversations, setConversations] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadConversations = async () => {
-      if (!encodedName) {
-        // Keep loading state when encodedName is not available yet
-        return;
-      }
+    if (!workingDirectory) return;
 
+    const loadConversations = async () => {
       try {
         setLoading(true);
-        const response = await fetch(getHistoriesUrl(encodedName));
-
+        setError(null);
+        const response = await fetch(getSessionsUrl(workingDirectory));
         if (!response.ok) {
-          throw new Error(
-            `Failed to load conversations: ${response.statusText}`,
-          );
+          throw new Error(`Failed to load conversations: ${response.status}`);
         }
-        const data = await response.json();
-        setConversations(data.conversations || []);
+        const data = (await response.json()) as SessionsResponse;
+        setConversations(data.sessions || []);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to load conversations",
@@ -43,129 +53,101 @@ export function HistoryView({ encodedName }: HistoryViewProps) {
     };
 
     loadConversations();
-  }, [encodedName]);
-
-  const handleConversationSelect = (sessionId: string) => {
-    const searchParams = new URLSearchParams();
-    searchParams.set("sessionId", sessionId);
-    navigate({ search: searchParams.toString() });
-  };
-
-  if (loading || !encodedName) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600 dark:text-slate-400">
-            {!encodedName ? "Loading project..." : "Loading conversations..."}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
-            <svg
-              className="w-8 h-8 text-red-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          </div>
-          <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
-            Error Loading History
-          </h2>
-          <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
-            {error}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (conversations.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 bg-slate-200 dark:bg-slate-700 rounded-full flex items-center justify-center">
-            <svg
-              className="w-8 h-8 text-slate-400 dark:text-slate-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          </div>
-          <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
-            No Conversations Yet
-          </h2>
-          <p className="text-slate-600 dark:text-slate-400 text-sm max-w-sm">
-            Start chatting to see your conversation history here.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  }, [refreshToken, workingDirectory]);
 
   return (
-    <div className="flex-1 overflow-hidden">
-      <div className="p-6 h-full flex flex-col">
-        <div className="grid gap-4 flex-1 overflow-y-auto">
-          {conversations.map((conversation) => (
-            <div
-              key={conversation.sessionId}
-              onClick={() => handleConversationSelect(conversation.sessionId)}
-              className="p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-colors cursor-pointer shadow-sm hover:shadow-md"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                    Session: {conversation.sessionId.substring(0, 8)}...
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    {new Date(conversation.startTime).toLocaleString()} •{" "}
-                    {conversation.messageCount} messages
-                  </p>
-                  <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 line-clamp-2">
-                    {conversation.lastMessagePreview}
-                  </p>
-                </div>
-                <div className="ml-4 flex-shrink-0">
-                  <svg
-                    className="w-5 h-5 text-slate-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          ))}
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80 shadow-sm backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-800/80">
+      <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3 dark:border-slate-700/70">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            Conversations
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            This project
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 xl:hidden dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+          aria-label="Close conversation list"
+        >
+          <XMarkIcon className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="p-3">
+        <button
+          type="button"
+          onClick={onNew}
+          disabled={disabled}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <PlusIcon className="h-4 w-4" />
+          New conversation
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+        {loading || !workingDirectory ? (
+          <p className="px-3 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+            Loading conversations...
+          </p>
+        ) : error ? (
+          <p className="px-3 py-6 text-center text-sm text-red-600 dark:text-red-400">
+            {error}
+          </p>
+        ) : conversations.length === 0 ? (
+          <div className="px-3 py-8 text-center">
+            <ChatBubbleLeftRightIcon className="mx-auto h-7 w-7 text-slate-400" />
+            <p className="mt-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+              No conversations yet
+            </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Start one above.
+            </p>
+          </div>
+        ) : (
+          <ul className="space-y-1">
+            {conversations.map((conversation) => {
+              const selected = conversation.sessionId === currentSessionId;
+              const title =
+                conversation.customTitle ||
+                conversation.summary ||
+                conversation.firstPrompt ||
+                `Session ${conversation.sessionId.slice(0, 8)}`;
+              return (
+                <li key={conversation.sessionId}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(conversation.sessionId)}
+                    disabled={disabled}
+                    aria-current={selected ? "page" : undefined}
+                    className={`w-full rounded-xl px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      selected
+                        ? "bg-blue-50 text-blue-900 ring-1 ring-blue-200 dark:bg-blue-950/50 dark:text-blue-100 dark:ring-blue-800"
+                        : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700/70"
+                    }`}
+                  >
+                    <span className="block truncate text-sm font-medium">
+                      {title}
+                    </span>
+                    {conversation.customTitle &&
+                      conversation.summary &&
+                      conversation.summary !== conversation.customTitle && (
+                        <span className="mt-1 block truncate text-xs text-slate-600 dark:text-slate-300">
+                          {conversation.summary}
+                        </span>
+                      )}
+                    <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                      {new Date(conversation.lastModified).toLocaleString()}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </div>
   );
