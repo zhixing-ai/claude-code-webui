@@ -5,7 +5,7 @@ import {
   act,
   fireEvent,
 } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { ProjectSelector } from "./components/ProjectSelector";
 import { ChatPage } from "./components/ChatPage";
@@ -24,6 +24,10 @@ describe("App Routing", () => {
     });
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders project selection page at root path", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
@@ -35,7 +39,66 @@ describe("App Routing", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Select a Project")).toBeInTheDocument();
+      expect(screen.getByText("Start a new project")).toBeInTheDocument();
+      expect(
+        screen.getByText("No projects yet. Create one above to start working."),
+      ).toBeInTheDocument();
     });
+  });
+
+  it("creates a project and opens its workspace", async () => {
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockImplementation(
+      (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                project: {
+                  path: "/home/sandbox/new-project",
+                  encodedName: "-home-sandbox-new-project",
+                },
+              }),
+              {
+                status: 201,
+                headers: { "Content-Type": "application/json" },
+              },
+            ),
+          );
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify({ projects: [] }), {
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      },
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route path="/" element={<ProjectSelector />} />
+          <Route
+            path="/projects/*"
+            element={<div>New project workspace</div>}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(await screen.findByLabelText("Project directory"), {
+      target: { value: "new-project" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+
+    expect(
+      await screen.findByText("New project workspace"),
+    ).toBeInTheDocument();
+    const createCall = fetchMock.mock.calls.find(
+      ([, init]) => init?.method === "POST",
+    );
+    expect(createCall).toBeDefined();
+    expect(JSON.parse(createCall![1].body)).toEqual({ path: "new-project" });
   });
 
   it("renders chat page when navigating to projects path", async () => {
@@ -144,6 +207,75 @@ describe("App Routing", () => {
     await waitFor(() =>
       expect(
         screen.queryByText("Claude needs your input"),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("reconnects to a run when the original stream ends early", async () => {
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    let runId = "";
+    fetchMock.mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/projects") {
+          return Promise.resolve(
+            new Response(JSON.stringify({ projects: [] }), {
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
+        if (url === "/api/chat") {
+          runId = JSON.parse(String(init?.body)).requestId;
+          return Promise.resolve(
+            new Response(
+              `${JSON.stringify({
+                type: "heartbeat",
+                runId,
+                sequence: 1,
+              })}\n`,
+            ),
+          );
+        }
+        if (url === `/api/runs/${runId}/events?after=1`) {
+          return Promise.resolve(
+            new Response(
+              `${JSON.stringify({
+                type: "done",
+                runId,
+                sequence: 2,
+              })}\n`,
+            ),
+          );
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      },
+    );
+
+    render(
+      <SettingsProvider>
+        <MemoryRouter initialEntries={["/projects/test-path"]}>
+          <Routes>
+            <Route path="/projects/*" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SettingsProvider>,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Type message..."), {
+      target: { value: "Keep running" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([url]) => String(url) === `/api/runs/${runId}/events?after=1`,
+        ),
+      ).toBe(true),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Error: Failed to get response"),
       ).not.toBeInTheDocument(),
     );
   });
@@ -264,5 +396,219 @@ describe("App Routing", () => {
     expect(
       fetchMock.mock.calls.filter(([url]) => String(url) === "/api/chat"),
     ).toHaveLength(1);
+  });
+
+  it("lists project conversations, resumes one, and starts a fresh conversation", async () => {
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+    const chatBodies: Array<Record<string, unknown>> = [];
+
+    fetchMock.mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/projects") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                projects: [{ path: "/test-path", encodedName: "-test-path" }],
+              }),
+              { headers: { "Content-Type": "application/json" } },
+            ),
+          );
+        }
+        if (url === "/api/sessions?directory=%2Ftest-path") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                sessions: [
+                  {
+                    sessionId: "session-123",
+                    summary: "Continue cloud work",
+                    lastModified: new Date(
+                      "2026-07-27T08:05:00.000Z",
+                    ).getTime(),
+                  },
+                ],
+              }),
+              { headers: { "Content-Type": "application/json" } },
+            ),
+          );
+        }
+        if (url === "/api/projects/-test-path/histories/session-123") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                sessionId: "session-123",
+                messages: [],
+                metadata: {
+                  startTime: "2026-07-27T08:00:00.000Z",
+                  endTime: "2026-07-27T08:05:00.000Z",
+                  messageCount: 0,
+                },
+              }),
+              { headers: { "Content-Type": "application/json" } },
+            ),
+          );
+        }
+        if (url === "/api/chat") {
+          chatBodies.push(JSON.parse(String(init?.body)));
+          return Promise.resolve(
+            new Response(`${JSON.stringify({ type: "done" })}\n`),
+          );
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      },
+    );
+
+    render(
+      <SettingsProvider>
+        <MemoryRouter initialEntries={["/projects/test-path"]}>
+          <Routes>
+            <Route path="/projects/*" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SettingsProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Toggle conversation list" }),
+    );
+    fireEvent.click(await screen.findByText("Continue cloud work"));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([url]) =>
+            String(url) === "/api/projects/-test-path/histories/session-123",
+        ),
+      ).toBe(true),
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Type message..."), {
+      target: { value: "Continue this session" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(chatBodies[0]).toMatchObject({ sessionId: "session-123" }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Toggle conversation list" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New conversation" }),
+    );
+    fireEvent.change(screen.getByPlaceholderText("Type message..."), {
+      target: { value: "Start fresh" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(chatBodies).toHaveLength(2));
+    expect(chatBodies[1]).not.toHaveProperty("sessionId");
+  });
+
+  it("replays and reconnects an active run after a browser refresh", async () => {
+    const activeRunKey = "claude-code-webui-active-run:/test-path";
+    vi.spyOn(window.localStorage, "getItem").mockImplementation((key) =>
+      key === activeRunKey ? JSON.stringify({ runId: "run-refresh" }) : null,
+    );
+    const removeItem = vi.spyOn(window.localStorage, "removeItem");
+    const fetchMock = global.fetch as ReturnType<typeof vi.fn>;
+
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/projects") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ projects: [] }), {
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      if (url === "/api/sessions?directory=%2Ftest-path") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ sessions: [] }), {
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      if (url === "/api/runs/run-refresh") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: "run-refresh",
+              request: {
+                message: "Build a dashboard",
+                requestId: "run-refresh",
+                workingDirectory: "/test-path",
+              },
+              sessionId: "session-refresh",
+              status: "running",
+              createdAt: "2026-07-27T08:00:00.000Z",
+            }),
+            { headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      }
+      if (url === "/api/runs/run-refresh/events?after=0") {
+        const events = [
+          {
+            type: "claude_json",
+            runId: "run-refresh",
+            sequence: 1,
+            data: {
+              type: "system",
+              subtype: "init",
+              apiKeySource: "user",
+              cwd: "/test-path",
+              session_id: "session-refresh",
+              uuid: "system-refresh",
+              tools: [],
+              mcp_servers: [],
+              model: "claude-sonnet",
+              permissionMode: "default",
+              slash_commands: [],
+              output_style: "default",
+            },
+          },
+          {
+            type: "claude_json",
+            runId: "run-refresh",
+            sequence: 2,
+            data: {
+              type: "assistant",
+              message: {
+                content: [{ type: "text", text: "Recovered output" }],
+              },
+              parent_tool_use_id: null,
+              session_id: "session-refresh",
+              uuid: "assistant-refresh",
+            },
+          },
+          {
+            type: "done",
+            runId: "run-refresh",
+            sequence: 3,
+          },
+        ];
+        return Promise.resolve(
+          new Response(
+            `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+          ),
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    render(
+      <SettingsProvider>
+        <MemoryRouter initialEntries={["/projects/test-path"]}>
+          <Routes>
+            <Route path="/projects/*" element={<ChatPage />} />
+          </Routes>
+        </MemoryRouter>
+      </SettingsProvider>,
+    );
+
+    expect(await screen.findByText("Build a dashboard")).toBeInTheDocument();
+    expect(await screen.findByText("Recovered output")).toBeInTheDocument();
+    await waitFor(() => expect(removeItem).toHaveBeenCalledWith(activeRunKey));
   });
 });

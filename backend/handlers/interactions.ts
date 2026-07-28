@@ -7,6 +7,7 @@ import type {
   AskUserQuestionItem,
   InteractionResponse,
 } from "../../shared/types.ts";
+import type { AppStateStore } from "../state/types.ts";
 
 type PendingInteractionBase = {
   requestId: string;
@@ -54,6 +55,8 @@ function readAnswers(
 export class PendingInteractions {
   private readonly pending = new Map<string, PendingInteraction>();
 
+  constructor(private readonly state?: AppStateStore) {}
+
   create(
     requestId: string,
     questions: AskUserQuestionItem[],
@@ -73,6 +76,13 @@ export class PendingInteractions {
       questions,
       resolve: resolveResponse,
       cleanup: () => signal.removeEventListener("abort", onAbort),
+    });
+    this.state?.createInteraction({
+      id: interactionId,
+      runId: requestId,
+      kind: "question",
+      input: { questions },
+      status: "pending",
     });
     signal.addEventListener("abort", onAbort, { once: true });
     if (signal.aborted) this.cancelRequest(requestId, "Request aborted");
@@ -104,6 +114,13 @@ export class PendingInteractions {
       resolve: resolveResponse,
       cleanup: () => signal.removeEventListener("abort", onAbort),
     });
+    this.state?.createInteraction({
+      id: interactionId,
+      runId: requestId,
+      kind: "permission",
+      input: { toolName, input, suggestions },
+      status: "pending",
+    });
     signal.addEventListener("abort", onAbort, { once: true });
     if (signal.aborted) this.cancelRequest(requestId, "Request aborted");
 
@@ -113,9 +130,13 @@ export class PendingInteractions {
   respond(
     interactionId: string,
     body: unknown,
-  ): "ok" | "invalid" | "not_found" {
+  ): "ok" | "invalid" | "not_found" | "expired" {
     const pending = this.pending.get(interactionId);
-    if (!pending) return "not_found";
+    if (!pending) {
+      return this.state?.getInteraction(interactionId)
+        ? "expired"
+        : "not_found";
+    }
 
     if (pending.kind === "permission") {
       if (
@@ -134,10 +155,16 @@ export class PendingInteractions {
       }
 
       if (body.permission === "deny") {
-        this.settle(interactionId, pending, {
-          behavior: "deny",
-          message: "User denied permission",
-        });
+        this.settle(
+          interactionId,
+          pending,
+          {
+            behavior: "deny",
+            message: "User denied permission",
+          },
+          "answered",
+          body as InteractionResponse,
+        );
         return "ok";
       }
 
@@ -159,35 +186,58 @@ export class PendingInteractions {
             ]
           : []),
       ];
-      this.settle(interactionId, pending, {
-        behavior: "allow",
-        updatedInput: pending.input,
-        ...(updatedPermissions.length ? { updatedPermissions } : {}),
-      });
+      this.settle(
+        interactionId,
+        pending,
+        {
+          behavior: "allow",
+          updatedInput: pending.input,
+          ...(updatedPermissions.length ? { updatedPermissions } : {}),
+        },
+        "answered",
+        body as InteractionResponse,
+      );
       return "ok";
     }
 
     if (isCancelled(body)) {
-      this.settle(interactionId, pending, {
-        behavior: "deny",
-        message: "User cancelled the question",
-      });
+      this.settle(
+        interactionId,
+        pending,
+        {
+          behavior: "deny",
+          message: "User cancelled the question",
+        },
+        "answered",
+        body,
+      );
       return "ok";
     }
     const answers = readAnswers(body, pending.questions);
     if (!answers) return "invalid";
 
-    this.settle(interactionId, pending, {
-      behavior: "allow",
-      updatedInput: { questions: pending.questions, answers },
-    });
+    this.settle(
+      interactionId,
+      pending,
+      {
+        behavior: "allow",
+        updatedInput: { questions: pending.questions, answers },
+      },
+      "answered",
+      body as InteractionResponse,
+    );
     return "ok";
   }
 
   cancelRequest(requestId: string, message: string) {
     for (const [interactionId, pending] of this.pending) {
       if (pending.requestId === requestId) {
-        this.settle(interactionId, pending, { behavior: "deny", message });
+        this.settle(
+          interactionId,
+          pending,
+          { behavior: "deny", message },
+          "interrupted",
+        );
       }
     }
   }
@@ -195,7 +245,12 @@ export class PendingInteractions {
   private cancelInteraction(interactionId: string, message: string) {
     const pending = this.pending.get(interactionId);
     if (pending) {
-      this.settle(interactionId, pending, { behavior: "deny", message });
+      this.settle(
+        interactionId,
+        pending,
+        { behavior: "deny", message },
+        "interrupted",
+      );
     }
   }
 
@@ -203,8 +258,11 @@ export class PendingInteractions {
     interactionId: string,
     pending: PendingInteraction,
     result: PermissionResult,
+    status: "answered" | "interrupted",
+    response?: InteractionResponse,
   ) {
     this.pending.delete(interactionId);
+    this.state?.finishInteraction(interactionId, status, response);
     pending.cleanup();
     pending.resolve(result);
   }
@@ -224,6 +282,9 @@ export async function handleInteractionResponse(
   const result = interactions.respond(c.req.param("interactionId") ?? "", body);
   if (result === "not_found") {
     return c.json({ error: "Interaction not found" }, 404);
+  }
+  if (result === "expired") {
+    return c.json({ error: "Interaction is no longer active" }, 409);
   }
   if (result === "invalid") {
     return c.json({ error: "Invalid interaction response" }, 400);

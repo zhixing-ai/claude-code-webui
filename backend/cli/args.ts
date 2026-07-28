@@ -13,6 +13,7 @@ export interface ParsedArgs {
   port: number;
   host: string;
   claudePath?: string;
+  databasePath?: string;
 }
 
 export function parseCliArgs(): ParsedArgs {
@@ -20,7 +21,12 @@ export function parseCliArgs(): ParsedArgs {
   const version = VERSION;
 
   // Get default port from environment
-  const defaultPort = parseInt(getEnv("PORT") || "8080", 10);
+  const defaultPort = parseInt(
+    getEnv("CLAUDE_CODE_WEBUI_PORT") || getEnv("PORT") || "8080",
+    10,
+  );
+  const defaultHost =
+    getEnv("CLAUDE_CODE_WEBUI_HOST") || getEnv("HOST") || "127.0.0.1";
 
   // Configure program
   program
@@ -42,11 +48,16 @@ export function parseCliArgs(): ParsedArgs {
     .option(
       "--host <host>",
       "Host address to bind to (use 0.0.0.0 for all interfaces)",
-      "127.0.0.1",
+      defaultHost,
     )
     .option(
       "--claude-path <path>",
       "Path to claude executable (overrides automatic detection)",
+    )
+    .option(
+      "--database <path>",
+      "SQLite state database path",
+      getEnv("CLAUDE_CODE_WEBUI_DB"),
     )
     .option("-d, --debug", "Enable debug mode", false);
 
@@ -63,5 +74,6 @@ export function parseCliArgs(): ParsedArgs {
     port: options.port,
     host: options.host,
     claudePath: options.claudePath,
+    databasePath: options.database,
   };
 }

@@ -1,6 +1,5 @@
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeftIcon } from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
@@ -27,6 +26,8 @@ import {
   getChatUrl,
   getInteractionResponseUrl,
   getProjectsUrl,
+  getRunEventsUrl,
+  getRunUrl,
 } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
@@ -39,6 +40,24 @@ import {
   replayTaskMessages,
   selectTasks,
 } from "../utils/taskProjection";
+import {
+  getStorageItem,
+  removeStorageItem,
+  setStorageItem,
+} from "../utils/storage";
+
+interface StoredRunResponse {
+  id: string;
+  request: ChatRequest;
+  sessionId?: string;
+  status: "running" | "completed" | "failed" | "aborted" | "interrupted";
+  createdAt: string;
+}
+
+interface RunStreamResult {
+  sessionId: string | null;
+  terminal: boolean;
+}
 
 export function ChatPage() {
   const location = useLocation();
@@ -46,6 +65,9 @@ export function ChatPage() {
   const [searchParams] = useSearchParams();
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isConversationListOpen, setIsConversationListOpen] = useState(false);
+  const [conversationListVersion, setConversationListVersion] = useState(0);
+  const restoreAttempt = useRef<string | null>(null);
   const [askUserQuestion, setAskUserQuestion] =
     useState<AskUserQuestionStreamResponse | null>(null);
   const [toolPermissions, setToolPermissions] = useState<
@@ -68,11 +90,8 @@ export function ChatPage() {
     return normalizeWindowsPath(decodedPath);
   })();
 
-  // Get current view and sessionId from query parameters
-  const currentView = searchParams.get("view");
+  // Get the selected session from query parameters
   const sessionId = searchParams.get("sessionId");
-  const isHistoryView = currentView === "history";
-  const isLoadedConversation = !!sessionId && !isHistoryView;
 
   const { processStreamLine } = useClaudeStreaming();
   const { abortRequest } = useAbortController();
@@ -130,7 +149,9 @@ export function ChatPage() {
     hasShownInitMessage,
     currentAssistantMessage,
     setInput,
+    setMessages,
     setCurrentSessionId,
+    setCurrentRequestId,
     setHasShownInitMessage,
     setHasReceivedInit,
     setCurrentAssistantMessage,
@@ -183,6 +204,100 @@ export function ChatPage() {
     }
   }, [showPermissionRequest, showPlanModeRequest, toolPermission]);
 
+  const consumeRunResponse = useCallback(
+    async (
+      runId: string,
+      initialResponse: Response,
+      initialSessionId: string | null,
+    ): Promise<RunStreamResult> => {
+      let response = initialResponse;
+      let resolvedSessionId = initialSessionId;
+      let localAssistantMessage = currentAssistantMessage;
+      let localHasReceivedInit = false;
+      let localHasShownInitMessage = hasShownInitMessage;
+      let lastSequence = 0;
+      let terminal = false;
+
+      const streamingContext: StreamingContext = {
+        get currentAssistantMessage() {
+          return localAssistantMessage;
+        },
+        setCurrentAssistantMessage: (message) => {
+          localAssistantMessage = message;
+          setCurrentAssistantMessage(message);
+        },
+        addMessage,
+        updateLastMessage,
+        onSessionId: (nextSessionId) => {
+          resolvedSessionId = nextSessionId;
+          setCurrentSessionId(nextSessionId);
+        },
+        shouldShowInitMessage: () => !localHasShownInitMessage,
+        onInitMessageShown: () => {
+          localHasShownInitMessage = true;
+          setHasShownInitMessage(true);
+        },
+        get hasReceivedInit() {
+          return localHasReceivedInit;
+        },
+        setHasReceivedInit: (received: boolean) => {
+          localHasReceivedInit = received;
+          setHasReceivedInit(received);
+        },
+        onAskUserQuestion: setAskUserQuestion,
+        onToolPermission: handleToolPermission,
+        onSdkMessage: handleSdkMessage,
+      };
+
+      const processLine = (line: string) => {
+        if (!line.trim()) return;
+        const envelope = JSON.parse(line) as {
+          type?: string;
+          sequence?: number;
+        };
+        if (typeof envelope.sequence === "number") {
+          lastSequence = Math.max(lastSequence, envelope.sequence);
+        }
+        terminal =
+          envelope.type === "done" ||
+          envelope.type === "error" ||
+          envelope.type === "aborted";
+        processStreamLine(line, streamingContext);
+      };
+
+      for (let reconnects = 0; !terminal; reconnects += 1) {
+        try {
+          await consumeStream(response, processLine);
+        } catch (error) {
+          if (reconnects >= 3) throw error;
+        }
+        if (terminal) break;
+        if (reconnects >= 3) {
+          throw new Error("Run stream ended before completion");
+        }
+        response = await fetch(getRunEventsUrl(runId, lastSequence));
+        if (!response.ok) {
+          throw new Error(`Could not reconnect to run: ${response.status}`);
+        }
+      }
+
+      return { sessionId: resolvedSessionId, terminal };
+    },
+    [
+      addMessage,
+      currentAssistantMessage,
+      handleSdkMessage,
+      handleToolPermission,
+      hasShownInitMessage,
+      processStreamLine,
+      setCurrentAssistantMessage,
+      setCurrentSessionId,
+      setHasReceivedInit,
+      setHasShownInitMessage,
+      updateLastMessage,
+    ],
+  );
+
   const sendMessage = useCallback(
     async (
       messageContent?: string,
@@ -194,6 +309,10 @@ export function ChatPage() {
       if (!content || isLoading) return;
 
       const requestId = generateRequestId();
+      const activeRunKey = getActiveRunStorageKey(workingDirectory);
+      let runAccepted = false;
+      let streamResult: RunStreamResult | undefined;
+      setStorageItem(activeRunKey, { runId: requestId });
 
       // Only add user message to chat if not hidden
       if (!hideUserMessage) {
@@ -223,52 +342,14 @@ export function ChatPage() {
           } as ChatRequest),
         });
 
-        if (!response.body) throw new Error("No response body");
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        // Local state for this streaming session
-        let localHasReceivedInit = false;
-        let streamBuffer = "";
-
-        const streamingContext: StreamingContext = {
-          currentAssistantMessage,
-          setCurrentAssistantMessage,
-          addMessage,
-          updateLastMessage,
-          onSessionId: setCurrentSessionId,
-          shouldShowInitMessage: () => !hasShownInitMessage,
-          onInitMessageShown: () => setHasShownInitMessage(true),
-          get hasReceivedInit() {
-            return localHasReceivedInit;
-          },
-          setHasReceivedInit: (received: boolean) => {
-            localHasReceivedInit = received;
-            setHasReceivedInit(received);
-          },
-          onAskUserQuestion: setAskUserQuestion,
-          onToolPermission: handleToolPermission,
-          onSdkMessage: handleSdkMessage,
-        };
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          streamBuffer += decoder.decode(value, { stream: true });
-          const lines = streamBuffer.split("\n");
-          streamBuffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if (line.trim()) processStreamLine(line, streamingContext);
-          }
-        }
-
-        streamBuffer += decoder.decode();
-        if (streamBuffer.trim()) {
-          processStreamLine(streamBuffer, streamingContext);
-        }
+        if (!response.ok)
+          throw new Error(`Chat request failed: ${response.status}`);
+        runAccepted = true;
+        streamResult = await consumeRunResponse(
+          requestId,
+          response,
+          currentSessionId,
+        );
       } catch (error) {
         console.error("Failed to send message:", error);
         addMessage({
@@ -278,6 +359,15 @@ export function ChatPage() {
           timestamp: Date.now(),
         });
       } finally {
+        setConversationListVersion((version) => version + 1);
+        if (!runAccepted || streamResult?.terminal) {
+          removeStorageItem(activeRunKey);
+        }
+        if (!sessionId && streamResult?.sessionId) {
+          const params = new URLSearchParams();
+          params.set("sessionId", streamResult.sessionId);
+          navigate({ search: params.toString() }, { replace: true });
+        }
         setAskUserQuestion(null);
         setToolPermissions([]);
         closePermissionRequest();
@@ -289,28 +379,156 @@ export function ChatPage() {
       input,
       isLoading,
       currentSessionId,
+      sessionId,
       allowedTools,
-      hasShownInitMessage,
-      currentAssistantMessage,
       workingDirectory,
       permissionMode,
       generateRequestId,
       clearInput,
       startRequest,
       addMessage,
-      updateLastMessage,
-      setCurrentSessionId,
-      setHasShownInitMessage,
-      setHasReceivedInit,
-      setCurrentAssistantMessage,
       resetRequestState,
-      processStreamLine,
-      handleToolPermission,
-      handleSdkMessage,
       closePermissionRequest,
       closePlanModeRequest,
+      consumeRunResponse,
+      navigate,
     ],
   );
+
+  useEffect(() => {
+    if (!workingDirectory) return;
+    if (sessionId && loadedSessionId !== sessionId && !historyError) {
+      return;
+    }
+
+    const activeRunKey = getActiveRunStorageKey(workingDirectory);
+    if (restoreAttempt.current === activeRunKey) return;
+    restoreAttempt.current = activeRunKey;
+
+    const stored = getStorageItem<{ runId?: string } | null>(
+      activeRunKey,
+      null,
+    );
+    if (!stored?.runId) return;
+
+    const restoreRun = async () => {
+      let runResponse: Response;
+      try {
+        runResponse = await fetch(getRunUrl(stored.runId!));
+      } catch (error) {
+        console.error("Failed to inspect active run:", error);
+        restoreAttempt.current = null;
+        return;
+      }
+
+      if (runResponse.status === 404) {
+        removeStorageItem(activeRunKey);
+        return;
+      }
+      if (!runResponse.ok) {
+        restoreAttempt.current = null;
+        return;
+      }
+
+      const run = (await runResponse.json()) as StoredRunResponse;
+      if (
+        !run.id ||
+        typeof run.request?.message !== "string" ||
+        (run.request.workingDirectory &&
+          normalizeWindowsPath(run.request.workingDirectory) !==
+            normalizeWindowsPath(workingDirectory))
+      ) {
+        removeStorageItem(activeRunKey);
+        return;
+      }
+
+      const startedAt = new Date(run.createdAt).getTime();
+      setMessages([
+        ...historyMessages.filter(
+          (message) =>
+            !Number.isFinite(startedAt) || message.timestamp < startedAt,
+        ),
+        {
+          type: "chat",
+          role: "user",
+          content: run.request.message,
+          timestamp: Number.isFinite(startedAt) ? startedAt : Date.now(),
+        },
+      ]);
+      setTaskProjection(
+        replayTaskMessages(
+          historySdkMessages.filter(
+            (message) =>
+              !Number.isFinite(startedAt) ||
+              new Date(message.timestamp).getTime() < startedAt,
+          ),
+        ),
+      );
+      setCurrentSessionId(run.sessionId || run.request.sessionId || null);
+      setCurrentRequestId(run.id);
+      setHasShownInitMessage(false);
+      setHasReceivedInit(false);
+      startRequest();
+
+      try {
+        const eventsResponse = await fetch(getRunEventsUrl(run.id));
+        if (!eventsResponse.ok) {
+          throw new Error(
+            `Could not restore run events: ${eventsResponse.status}`,
+          );
+        }
+        const result = await consumeRunResponse(
+          run.id,
+          eventsResponse,
+          run.sessionId || run.request.sessionId || null,
+        );
+        if (result.terminal) removeStorageItem(activeRunKey);
+        if (!sessionId && result.sessionId) {
+          const params = new URLSearchParams();
+          params.set("sessionId", result.sessionId);
+          navigate({ search: params.toString() }, { replace: true });
+        }
+      } catch (error) {
+        console.error("Failed to restore active run:", error);
+        addMessage({
+          type: "chat",
+          role: "assistant",
+          content:
+            "The active response could not be reconnected. Refresh to retry.",
+          timestamp: Date.now(),
+        });
+        restoreAttempt.current = null;
+      } finally {
+        setConversationListVersion((version) => version + 1);
+        setAskUserQuestion(null);
+        setToolPermissions([]);
+        closePermissionRequest();
+        closePlanModeRequest();
+        resetRequestState();
+      }
+    };
+
+    void restoreRun();
+  }, [
+    addMessage,
+    closePermissionRequest,
+    closePlanModeRequest,
+    consumeRunResponse,
+    historyError,
+    historyMessages,
+    historySdkMessages,
+    loadedSessionId,
+    navigate,
+    resetRequestState,
+    sessionId,
+    setCurrentRequestId,
+    setCurrentSessionId,
+    setHasReceivedInit,
+    setHasShownInitMessage,
+    setMessages,
+    startRequest,
+    workingDirectory,
+  ]);
 
   const handleAbort = useCallback(() => {
     setAskUserQuestion(null);
@@ -481,11 +699,53 @@ export function ChatPage() {
       }
     : undefined;
 
-  const handleHistoryClick = useCallback(() => {
-    const searchParams = new URLSearchParams();
-    searchParams.set("view", "history");
-    navigate({ search: searchParams.toString() });
-  }, [navigate]);
+  const handleConversationListClick = useCallback(() => {
+    setIsConversationListOpen((open) => !open);
+  }, []);
+
+  const handleNewConversation = useCallback(() => {
+    if (isLoading) return;
+    removeStorageItem(getActiveRunStorageKey(workingDirectory));
+    navigate({ search: "" });
+    setMessages([]);
+    setInput("");
+    setCurrentSessionId(null);
+    setHasShownInitMessage(false);
+    setHasReceivedInit(false);
+    setCurrentAssistantMessage(null);
+    setAskUserQuestion(null);
+    setToolPermissions([]);
+    setTaskProjection(createEmptyTaskProjection());
+    closePermissionRequest();
+    closePlanModeRequest();
+    setIsConversationListOpen(false);
+  }, [
+    closePermissionRequest,
+    closePlanModeRequest,
+    isLoading,
+    navigate,
+    setCurrentAssistantMessage,
+    setCurrentSessionId,
+    setHasReceivedInit,
+    setHasShownInitMessage,
+    setInput,
+    setMessages,
+    workingDirectory,
+  ]);
+
+  const handleConversationSelect = useCallback(
+    (nextSessionId: string) => {
+      if (isLoading || nextSessionId === currentSessionId) {
+        setIsConversationListOpen(false);
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set("sessionId", nextSessionId);
+      navigate({ search: params.toString() });
+      setIsConversationListOpen(false);
+    },
+    [currentSessionId, isLoading, navigate],
+  );
 
   const handleSettingsClick = useCallback(() => {
     setIsSettingsOpen(true);
@@ -511,25 +771,13 @@ export function ChatPage() {
     loadProjects();
   }, []);
 
-  const handleBackToChat = useCallback(() => {
-    navigate({ search: "" });
-  }, [navigate]);
-
-  const handleBackToHistory = useCallback(() => {
-    const searchParams = new URLSearchParams();
-    searchParams.set("view", "history");
-    navigate({ search: searchParams.toString() });
-  }, [navigate]);
-
   const handleBackToProjects = useCallback(() => {
     navigate("/");
   }, [navigate]);
 
   const handleBackToProjectChat = useCallback(() => {
-    if (workingDirectory) {
-      navigate(`/projects${workingDirectory}`);
-    }
-  }, [navigate, workingDirectory]);
+    handleNewConversation();
+  }, [handleNewConversation]);
 
   // Handle global keyboard shortcuts
   useEffect(() => {
@@ -549,32 +797,10 @@ export function ChatPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
-      <div
-        className={`mx-auto flex h-screen flex-col p-3 sm:p-6 ${
-          hasTasks ? "max-w-[92rem]" : "max-w-6xl"
-        }`}
-      >
+      <div className="mx-auto flex h-screen max-w-[110rem] flex-col p-3 sm:p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
           <div className="flex items-center gap-4">
-            {isHistoryView && (
-              <button
-                onClick={handleBackToChat}
-                className="p-2 rounded-lg bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-all duration-200 backdrop-blur-sm shadow-sm hover:shadow-md"
-                aria-label="Back to chat"
-              >
-                <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-              </button>
-            )}
-            {isLoadedConversation && (
-              <button
-                onClick={handleBackToHistory}
-                className="p-2 rounded-lg bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-all duration-200 backdrop-blur-sm shadow-sm hover:shadow-md"
-                aria-label="Back to history"
-              >
-                <ChevronLeftIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-              </button>
-            )}
             <div>
               <nav aria-label="Breadcrumb">
                 <div className="flex items-center">
@@ -585,7 +811,7 @@ export function ChatPage() {
                   >
                     Claude Code Web UI
                   </button>
-                  {(isHistoryView || sessionId) && (
+                  {sessionId && (
                     <>
                       <span
                         className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight mx-3 select-none"
@@ -598,9 +824,7 @@ export function ChatPage() {
                         className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight"
                         aria-current="page"
                       >
-                        {isHistoryView
-                          ? "Conversation History"
-                          : "Conversation"}
+                        Conversation
                       </h1>
                     </>
                   )}
@@ -625,102 +849,162 @@ export function ChatPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {!isHistoryView && <HistoryButton onClick={handleHistoryClick} />}
+            <div className="xl:hidden">
+              <HistoryButton
+                onClick={handleConversationListClick}
+                expanded={isConversationListOpen}
+              />
+            </div>
             <SettingsButton onClick={handleSettingsClick} />
           </div>
         </div>
 
         {/* Main Content */}
-        {isHistoryView ? (
-          <HistoryView
-            workingDirectory={workingDirectory || ""}
-            encodedName={getEncodedName()}
-            onBack={handleBackToChat}
-          />
-        ) : historyLoading ? (
-          /* Loading conversation history */
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-8 h-8 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-slate-600 dark:text-slate-400">
-                Loading conversation history...
-              </p>
-            </div>
-          </div>
-        ) : historyError ? (
-          /* Error loading conversation history */
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center max-w-md">
-              <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
-                <svg
-                  className="w-8 h-8 text-red-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <h2 className="text-slate-800 dark:text-slate-100 text-xl font-semibold mb-2">
-                Error Loading Conversation
-              </h2>
-              <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
-                {historyError}
-              </p>
-              <button
-                onClick={() => navigate({ search: "" })}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Start New Conversation
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div
-            className={`flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:gap-5 ${
-              hasTasks ? "lg:grid-cols-[18rem_minmax(0,1fr)]" : "lg:grid-cols-1"
-            }`}
+        <div className="relative flex min-h-0 flex-1 gap-5">
+          {isConversationListOpen && (
+            <button
+              type="button"
+              className="fixed inset-0 z-40 bg-slate-950/45 xl:hidden"
+              onClick={() => setIsConversationListOpen(false)}
+              aria-label="Close conversation list"
+            />
+          )}
+          <aside
+            id="conversation-list"
+            className={`z-50 w-[min(22rem,calc(100vw-2rem))] shrink-0 ${
+              isConversationListOpen
+                ? "fixed inset-y-3 left-3 sm:inset-y-6 sm:left-6"
+                : "hidden"
+            } xl:static xl:block xl:w-72`}
           >
-            <TaskSidebar tasks={tasks} />
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-              {/* Chat Messages */}
-              <ChatMessages messages={messages} isLoading={isLoading} />
+            <HistoryView
+              workingDirectory={workingDirectory}
+              currentSessionId={currentSessionId}
+              disabled={isLoading}
+              refreshToken={conversationListVersion}
+              onSelect={handleConversationSelect}
+              onNew={handleNewConversation}
+              onClose={() => setIsConversationListOpen(false)}
+            />
+          </aside>
 
-              {/* Input */}
-              <ChatInput
-                input={input}
-                isLoading={isLoading}
-                currentRequestId={currentRequestId}
-                onInputChange={setInput}
-                onSubmit={() => sendMessage()}
-                onAbort={handleAbort}
-                permissionMode={permissionMode}
-                onPermissionModeChange={setPermissionMode}
-                showPermissions={isPermissionMode}
-                permissionData={permissionData}
-                planPermissionData={planPermissionData}
-                askUserQuestionData={
-                  askUserQuestion
-                    ? {
-                        questions: askUserQuestion.questions,
-                        onSubmit: (answers) => respondToQuestion({ answers }),
-                        onCancel: () => respondToQuestion({ cancelled: true }),
-                      }
-                    : undefined
-                }
-              />
-            </div>
-          </div>
-        )}
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {historyLoading ? (
+              /* Loading conversation history */
+              <div className="flex flex-1 items-center justify-center">
+                <div className="text-center">
+                  <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"></div>
+                  <p className="text-slate-600 dark:text-slate-400">
+                    Loading conversation history...
+                  </p>
+                </div>
+              </div>
+            ) : historyError ? (
+              /* Error loading conversation history */
+              <div className="flex flex-1 items-center justify-center">
+                <div className="max-w-md text-center">
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20">
+                    <svg
+                      className="h-8 w-8 text-red-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </div>
+                  <h2 className="mb-2 text-xl font-semibold text-slate-800 dark:text-slate-100">
+                    Error Loading Conversation
+                  </h2>
+                  <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+                    {historyError}
+                  </p>
+                  <button
+                    onClick={handleNewConversation}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
+                  >
+                    Start New Conversation
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:gap-5 ${
+                  hasTasks
+                    ? "lg:grid-cols-[18rem_minmax(0,1fr)]"
+                    : "lg:grid-cols-1"
+                }`}
+              >
+                <TaskSidebar tasks={tasks} />
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                  {/* Chat Messages */}
+                  <ChatMessages messages={messages} isLoading={isLoading} />
+
+                  {/* Input */}
+                  <ChatInput
+                    input={input}
+                    isLoading={isLoading}
+                    currentRequestId={currentRequestId}
+                    onInputChange={setInput}
+                    onSubmit={() => sendMessage()}
+                    onAbort={handleAbort}
+                    permissionMode={permissionMode}
+                    onPermissionModeChange={setPermissionMode}
+                    showPermissions={isPermissionMode}
+                    permissionData={permissionData}
+                    planPermissionData={planPermissionData}
+                    askUserQuestionData={
+                      askUserQuestion
+                        ? {
+                            questions: askUserQuestion.questions,
+                            onSubmit: (answers) =>
+                              respondToQuestion({ answers }),
+                            onCancel: () =>
+                              respondToQuestion({ cancelled: true }),
+                          }
+                        : undefined
+                    }
+                  />
+                </div>
+              </div>
+            )}
+          </main>
+        </div>
 
         {/* Settings Modal */}
         <SettingsModal isOpen={isSettingsOpen} onClose={handleSettingsClose} />
       </div>
     </div>
   );
+}
+
+async function consumeStream(
+  response: Response,
+  onLine: (line: string) => void,
+) {
+  if (!response.body) throw new Error("No response body");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) onLine(line);
+  }
+
+  buffer += decoder.decode();
+  if (buffer.trim()) onLine(buffer);
+}
+
+function getActiveRunStorageKey(workingDirectory?: string): string {
+  return `claude-code-webui-active-run:${workingDirectory || "default"}`;
 }

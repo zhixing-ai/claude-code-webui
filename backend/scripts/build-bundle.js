@@ -14,7 +14,7 @@ await build({
   entryPoints: ["cli/node.ts"],
   bundle: true,
   platform: "node",
-  target: "node18",
+  target: "node22",
   format: "esm",
   outfile: "dist/cli/node.js",
   external: [

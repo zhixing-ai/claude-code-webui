@@ -45,9 +45,28 @@ export type StreamResponse =
   | { type: "claude_json"; data: unknown }
   | AskUserQuestionStreamResponse
   | ToolPermissionStreamResponse
+  | { type: "heartbeat"; runId: string }
   | { type: "error"; error?: string }
   | { type: "done" }
   | { type: "aborted" };
+
+export type SequencedStreamResponse = StreamResponse & {
+  runId: string;
+  sequence: number;
+};
+
+export interface CreateRunRequest {
+  message: string;
+  sessionId?: string;
+  requestId?: string;
+  allowedTools?: string[];
+  workingDirectory?: string;
+  permissionMode?: "default" | "plan" | "acceptEdits";
+}
+
+export interface CreateRunResponse {
+  runId: string;
+}
 
 export interface ChatRequest {
   message: string;
@@ -69,6 +88,27 @@ export interface ProjectInfo {
 
 export interface ProjectsResponse {
   projects: ProjectInfo[];
+}
+
+export interface CreateProjectRequest {
+  path: string;
+}
+
+export interface CreateProjectResponse {
+  project: ProjectInfo;
+}
+
+export interface SessionSummary {
+  sessionId: string;
+  summary: string;
+  lastModified: number;
+  customTitle?: string;
+  firstPrompt?: string;
+  cwd?: string;
+}
+
+export interface SessionsResponse {
+  sessions: SessionSummary[];
 }
 
 // Conversation history types

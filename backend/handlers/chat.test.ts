@@ -411,22 +411,22 @@ describe("Chat Handler - Permission Mode Tests", () => {
       // Parse each line to verify structure
       const parsedLines = lines.map((line) => JSON.parse(line));
 
-      expect(parsedLines[0]).toEqual({
+      expect(parsedLines[0]).toMatchObject({
         type: "claude_json",
         data: mockMessages[0],
       });
 
-      expect(parsedLines[1]).toEqual({
+      expect(parsedLines[1]).toMatchObject({
         type: "claude_json",
         data: mockMessages[1],
       });
 
-      expect(parsedLines[2]).toEqual({
+      expect(parsedLines[2]).toMatchObject({
         type: "claude_json",
         data: mockMessages[2],
       });
 
-      expect(parsedLines[3]).toEqual({
+      expect(parsedLines[3]).toMatchObject({
         type: "done",
       });
     });
@@ -471,7 +471,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
       expect(lines).toHaveLength(1);
 
       const errorResponse = JSON.parse(lines[0]);
-      expect(errorResponse).toEqual({
+      expect(errorResponse).toMatchObject({
         type: "error",
         error: "SDK execution failed",
       });
@@ -798,7 +798,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
       });
     });
 
-    it("cleans up a pending question when the browser disconnects", async () => {
+    it("keeps a pending question alive when the browser disconnects", async () => {
       mockQuery.mockImplementation(
         ({ options }: any) =>
           ({
@@ -836,7 +836,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
 
       expect(
         interactions.respond(first.interactionId, { cancelled: true }),
-      ).toBe("not_found");
+      ).toBe("ok");
     });
   });
 });

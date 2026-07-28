@@ -4,7 +4,7 @@ import { validateEncodedProjectName } from "../history/pathUtils.ts";
 import { parseAllHistoryFiles } from "../history/parser.ts";
 import { groupConversations } from "../history/grouping.ts";
 import { logger } from "../utils/logger.ts";
-import { stat } from "../utils/fs.ts";
+import { isNotFoundError, stat } from "../utils/fs.ts";
 import { getHomeDir } from "../utils/os.ts";
 
 /**
@@ -48,7 +48,7 @@ export async function handleHistoriesRequest(c: Context) {
       }
     } catch (error) {
       // Handle file not found errors in a cross-platform way
-      if (error instanceof Error && error.message.includes("No such file")) {
+      if (isNotFoundError(error)) {
         return c.json({ error: "Project not found" }, 404);
       }
       throw error;
