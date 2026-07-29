@@ -101,7 +101,7 @@ export class ChatRunManager {
     private readonly interactions: PendingInteractions,
     private readonly requestAbortControllers: Map<string, AbortController>,
     private readonly state?: AppStateStore,
-  ) {}
+  ) { }
 
   hasRun(runId: string): boolean {
     return this.active.has(runId) || Boolean(this.state?.getRun(runId));
@@ -216,6 +216,7 @@ export class ChatRunManager {
           executable: "node",
           executableArgs: [],
           pathToClaudeCodeExecutable: this.cliPath,
+          includePartialMessages: true,
           ...(request.sessionId ? { resume: request.sessionId } : {}),
           ...(request.allowedTools
             ? { allowedTools: request.allowedTools }
@@ -228,9 +229,9 @@ export class ChatRunManager {
             : {}),
           ...(this.state
             ? {
-                sessionStore: this.state,
-                sessionStoreFlush: "eager" as const,
-              }
+              sessionStore: this.state,
+              sessionStoreFlush: "eager" as const,
+            }
             : {}),
           canUseTool: async (toolName, input, permissionOptions) => {
             if (toolName === "AskUserQuestion") {
@@ -405,10 +406,10 @@ export async function handleChatRequest(
     runsOrControllers instanceof ChatRunManager
       ? runsOrControllers
       : new ChatRunManager(
-          c.var.config.cliPath,
-          legacyInteractions ?? new PendingInteractions(),
-          runsOrControllers,
-        );
+        c.var.config.cliPath,
+        legacyInteractions ?? new PendingInteractions(),
+        runsOrControllers,
+      );
   let request: ChatRequest | null;
   try {
     request = readChatRequest(await c.req.json());

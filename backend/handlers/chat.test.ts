@@ -104,6 +104,68 @@ describe("Chat Handler - Permission Mode Tests", () => {
       expect(response.headers.get("Content-Type")).toBe("application/x-ndjson");
     });
 
+    it("enables partial messages and forwards stream events verbatim", async () => {
+      const chatRequest: ChatRequest = {
+        message: "Test message",
+        requestId: "test-partial",
+      };
+
+      mockContext.req.json = vi.fn().mockResolvedValue(chatRequest);
+
+      const partial = {
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "Hel" },
+        },
+        session_id: "test-session",
+        parent_tool_use_id: null,
+      };
+
+      mockQuery.mockReturnValue({
+        [Symbol.asyncIterator]: async function* () {
+          yield partial as any;
+          yield {
+            type: "assistant",
+            message: { content: [{ type: "text", text: "Hello" }] },
+            session_id: "test-session",
+            parent_tool_use_id: null,
+          } as any;
+        },
+        interrupt: vi.fn(),
+        next: vi.fn(),
+        return: vi.fn(),
+        throw: vi.fn(),
+      } as any);
+
+      const response = await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+
+      // Without this option the SDK only yields settled content blocks, so
+      // subscribers have nothing to render progressively.
+      expect(mockQuery).toHaveBeenCalledWith({
+        prompt: "Test message",
+        options: expect.objectContaining({
+          includePartialMessages: true,
+        }),
+      });
+
+      // Deltas must reach subscribers unfiltered, in the same `claude_json`
+      // envelope as settled messages, and ahead of them.
+      const body = await new Response(response.body).text();
+      const lines = body
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      const claudeLines = lines.filter((line) => line.type === "claude_json");
+      expect(claudeLines[0]?.data).toEqual(partial);
+      expect(claudeLines[1]?.data?.type).toBe("assistant");
+    });
+
     it("should pass permissionMode 'acceptEdits' to Claude SDK", async () => {
       const chatRequest: ChatRequest = {
         message: "Test message",
