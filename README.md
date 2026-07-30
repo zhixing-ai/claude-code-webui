@@ -151,7 +151,6 @@ The backend server supports the following command-line options:
 | `-p, --port <port>`    | Port to listen on                                         | 8080        |
 | `--host <host>`        | Host address to bind to (use 0.0.0.0 for all interfaces)  | 127.0.0.1   |
 | `--claude-path <path>` | Path to claude executable (overrides automatic detection) | Auto-detect |
-| `--database <path>`    | SQLite state database                                     | `~/.claude-code-webui/state.sqlite` |
 | `-d, --debug`          | Enable debug mode                                         | false       |
 | `-h, --help`           | Show help message                                         | -           |
 | `-v, --version`        | Show version                                              | -           |
@@ -160,7 +159,6 @@ The backend server supports the following command-line options:
 
 - `CLAUDE_CODE_WEBUI_PORT` (or `PORT`) - Same as `--port`
 - `CLAUDE_CODE_WEBUI_HOST` (or `HOST`) - Same as `--host`
-- `CLAUDE_CODE_WEBUI_DB` - Same as `--database`
 - `DEBUG` - Same as `--debug`
 
 ### Examples
@@ -209,9 +207,11 @@ last received sequence. The Web UI does this automatically for transient
 connection failures while the page remains open.
 
 Runs, stream events, interaction status, session metadata, and mirrored Claude
-transcripts are stored in SQLite. A pending tool callback still cannot survive
-the Claude process itself exiting; after a server restart it is reported as
-interrupted and the session can be continued with the session messages API.
+transcripts are appended to `.state/state.ndjson` under the server's current
+working directory. A pending tool callback still cannot survive the Claude
+process itself exiting; after a server restart it is reported as interrupted
+and the session can be continued with the session messages API. A writer lease
+prevents two backend processes from modifying the same state directory.
 
 ---
 
@@ -241,10 +241,9 @@ This interface has no built-in authentication. Do not expose it directly to
 the public internet without an authenticated reverse proxy or equivalent
 access control.
 
-Mount `~/.claude-code-webui`, `~/.claude`, and project workspaces on persistent
-storage when sessions must survive sandbox recreation. SQLite inside an
-ephemeral container filesystem only survives process restarts in that same
-container.
+Mount `~/.claude` and the server working directory on persistent storage when
+sessions must survive sandbox recreation. The run and transcript journal is
+created automatically in `<working-directory>/.state`.
 
 ---
 

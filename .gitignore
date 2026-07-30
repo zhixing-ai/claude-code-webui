@@ -4,6 +4,7 @@
 # Build artifacts
 dist/
 backend/dist/
+.state/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal

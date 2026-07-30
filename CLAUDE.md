@@ -30,7 +30,7 @@ lefthook run pre-commit
 - **Technology**: TypeScript + Hono framework with runtime abstraction
 - **Purpose**: Executes `claude` commands and streams JSON responses
 
-**Key Features**: Modular architecture, structured logging, universal Claude CLI path detection, resumable runs, SQLite state persistence, session continuity, comprehensive testing.
+**Key Features**: Modular architecture, structured logging, universal Claude CLI path detection, resumable runs, file-backed state persistence, session continuity, comprehensive testing.
 
 **API Endpoints**:
 

@@ -13,9 +13,8 @@ import { validateClaudeCli } from "./validation.ts";
 import { setupLogger, logger } from "../utils/logger.ts";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { homedir } from "node:os";
 import { exit } from "../utils/os.ts";
-import { SqliteStateStore } from "../state/sqlite.ts";
+import { FileStateStore } from "../state/files.ts";
 
 async function main(runtime: NodeRuntime) {
   // Parse CLI arguments
@@ -36,9 +35,7 @@ async function main(runtime: NodeRuntime) {
   const __dirname =
     import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
   const staticPath = join(__dirname, "../static");
-  const databasePath =
-    args.databasePath ?? join(homedir(), ".claude-code-webui", "state.sqlite");
-  const stateStore = new SqliteStateStore(databasePath);
+  const stateStore = new FileStateStore(join(process.cwd(), ".state"));
 
   // Create application
   const app = createApp(runtime, {

@@ -13,7 +13,6 @@ export interface ParsedArgs {
   port: number;
   host: string;
   claudePath?: string;
-  databasePath?: string;
 }
 
 export function parseCliArgs(): ParsedArgs {
@@ -54,11 +53,6 @@ export function parseCliArgs(): ParsedArgs {
       "--claude-path <path>",
       "Path to claude executable (overrides automatic detection)",
     )
-    .option(
-      "--database <path>",
-      "SQLite state database path",
-      getEnv("CLAUDE_CODE_WEBUI_DB"),
-    )
     .option("-d, --debug", "Enable debug mode", false);
 
   // Parse arguments - Commander.js v14 handles this automatically
@@ -74,6 +68,5 @@ export function parseCliArgs(): ParsedArgs {
     port: options.port,
     host: options.host,
     claudePath: options.claudePath,
-    databasePath: options.database,
   };
 }
