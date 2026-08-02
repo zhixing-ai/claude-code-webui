@@ -4,8 +4,11 @@ import type {
   CreateRunRequest,
   CreateRunResponse,
 } from "../../shared/types.ts";
-import type { AppStateStore } from "../state/types.ts";
+import type { RunStateStore } from "../state/types.ts";
 import { ChatRunManager, streamResponse } from "./chat.ts";
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function readCreateRunRequest(value: unknown): CreateRunRequest | null {
   if (
@@ -28,6 +31,18 @@ export async function handleCreateRunRequest(c: Context, runs: ChatRunManager) {
     body = null;
   }
   if (!body) return c.json({ error: "Invalid run request" }, 400);
+  if (body.newSessionId && body.sessionId) {
+    return c.json(
+      { error: "newSessionId and sessionId are mutually exclusive" },
+      400,
+    );
+  }
+  if (
+    (body.newSessionId && !UUID.test(body.newSessionId)) ||
+    (body.sessionId && !UUID.test(body.sessionId))
+  ) {
+    return c.json({ error: "Session IDs must be UUIDs" }, 400);
+  }
 
   const request: ChatRequest = {
     ...body,
@@ -43,10 +58,10 @@ export async function handleCreateRunRequest(c: Context, runs: ChatRunManager) {
 export function handleRunEventsRequest(
   c: Context,
   runs: ChatRunManager,
-  state?: AppStateStore,
+  runStore?: RunStateStore,
 ) {
   const runId = c.req.param("runId") ?? "";
-  if (!runId || (!runs.hasRun(runId) && !state?.getRun(runId))) {
+  if (!runId || (!runs.hasRun(runId) && !runStore?.getRun(runId))) {
     return c.json({ error: "Run not found" }, 404);
   }
   const after = Number.parseInt(c.req.query("after") || "0", 10);
@@ -55,8 +70,8 @@ export function handleRunEventsRequest(
   );
 }
 
-export function handleRunRequest(c: Context, state?: AppStateStore) {
-  const run = state?.getRun(c.req.param("runId") ?? "");
+export function handleRunRequest(c: Context, runStore?: RunStateStore) {
+  const run = runStore?.getRun(c.req.param("runId") ?? "");
   return run
     ? c.json(run)
     : c.json({ error: "Run not found or persistence is disabled" }, 404);
@@ -64,18 +79,20 @@ export function handleRunRequest(c: Context, state?: AppStateStore) {
 
 export function handleRunInteractionsRequest(
   c: Context,
-  state?: AppStateStore,
+  runStore?: RunStateStore,
 ) {
-  if (!state) {
+  if (!runStore) {
     return c.json({ error: "Interaction persistence is disabled" }, 501);
   }
   const runId = c.req.param("runId") ?? "";
-  if (!state.getRun(runId)) return c.json({ error: "Run not found" }, 404);
-  return c.json({ interactions: state.listPendingInteractions(runId) });
+  if (!runStore.getRun(runId)) return c.json({ error: "Run not found" }, 404);
+  return c.json({ interactions: runStore.listPendingInteractions(runId) });
 }
 
-export function handleInteractionRequest(c: Context, state?: AppStateStore) {
-  const interaction = state?.getInteraction(c.req.param("interactionId") ?? "");
+export function handleInteractionRequest(c: Context, runStore?: RunStateStore) {
+  const interaction = runStore?.getInteraction(
+    c.req.param("interactionId") ?? "",
+  );
   return interaction
     ? c.json(interaction)
     : c.json({ error: "Interaction not found" }, 404);

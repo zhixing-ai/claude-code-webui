@@ -1,9 +1,4 @@
 import type {
-  SessionKey,
-  SessionStore,
-  SessionStoreEntry,
-} from "@anthropic-ai/claude-agent-sdk";
-import type {
   ChatRequest,
   InteractionResponse,
   StreamResponse,
@@ -42,15 +37,7 @@ export interface StoredInteraction {
   status: InteractionStatus;
 }
 
-export interface StoredSession {
-  sessionId: string;
-  cwd?: string;
-  summary: string;
-  createdAt: number;
-  lastModified: number;
-}
-
-export interface AppStateStore extends SessionStore {
+export interface RunStateStore {
   createRun(runId: string, request: ChatRequest): void;
   finishRun(runId: string, status: RunStatus, error?: string): void;
   setRunSession(runId: string, sessionId: string): void;
@@ -66,19 +53,4 @@ export interface AppStateStore extends SessionStore {
   ): void;
   getInteraction(interactionId: string): StoredInteraction | undefined;
   listPendingInteractions(runId: string): StoredInteraction[];
-
-  upsertSession(
-    sessionId: string,
-    cwd: string | undefined,
-    summary: string,
-  ): void;
-  listManagedSessions(): StoredSession[];
-  getManagedSession(sessionId: string): StoredSession | undefined;
-
-  close(): void;
 }
-
-export type TranscriptAppend = (
-  key: SessionKey,
-  entries: SessionStoreEntry[],
-) => Promise<void>;

@@ -7,7 +7,7 @@ import type {
   AskUserQuestionItem,
   InteractionResponse,
 } from "../../shared/types.ts";
-import type { AppStateStore } from "../state/types.ts";
+import type { RunStateStore } from "../state/types.ts";
 
 type PendingInteractionBase = {
   requestId: string;
@@ -55,7 +55,7 @@ function readAnswers(
 export class PendingInteractions {
   private readonly pending = new Map<string, PendingInteraction>();
 
-  constructor(private readonly state?: AppStateStore) {}
+  constructor(private readonly runStore?: RunStateStore) {}
 
   create(
     requestId: string,
@@ -77,7 +77,7 @@ export class PendingInteractions {
       resolve: resolveResponse,
       cleanup: () => signal.removeEventListener("abort", onAbort),
     });
-    this.state?.createInteraction({
+    this.runStore?.createInteraction({
       id: interactionId,
       runId: requestId,
       kind: "question",
@@ -114,7 +114,7 @@ export class PendingInteractions {
       resolve: resolveResponse,
       cleanup: () => signal.removeEventListener("abort", onAbort),
     });
-    this.state?.createInteraction({
+    this.runStore?.createInteraction({
       id: interactionId,
       runId: requestId,
       kind: "permission",
@@ -133,7 +133,7 @@ export class PendingInteractions {
   ): "ok" | "invalid" | "not_found" | "expired" {
     const pending = this.pending.get(interactionId);
     if (!pending) {
-      return this.state?.getInteraction(interactionId)
+      return this.runStore?.getInteraction(interactionId)
         ? "expired"
         : "not_found";
     }
@@ -262,7 +262,7 @@ export class PendingInteractions {
     response?: InteractionResponse,
   ) {
     this.pending.delete(interactionId);
-    this.state?.finishInteraction(interactionId, status, response);
+    this.runStore?.finishInteraction(interactionId, status, response);
     pending.cleanup();
     pending.resolve(result);
   }

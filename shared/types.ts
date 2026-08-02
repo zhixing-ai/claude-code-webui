@@ -57,11 +57,13 @@ export type SequencedStreamResponse = StreamResponse & {
 
 export interface CreateRunRequest {
   message: string;
+  newSessionId?: string;
   sessionId?: string;
   requestId?: string;
   allowedTools?: string[];
   workingDirectory?: string;
-  permissionMode?: "default" | "plan" | "acceptEdits";
+  additionalDirectories?: string[];
+  permissionMode?: "default" | "plan" | "acceptEdits" | "bypassPermissions";
 }
 
 export interface CreateRunResponse {
@@ -70,11 +72,13 @@ export interface CreateRunResponse {
 
 export interface ChatRequest {
   message: string;
+  newSessionId?: string;
   sessionId?: string;
   requestId: string;
   allowedTools?: string[];
   workingDirectory?: string;
-  permissionMode?: "default" | "plan" | "acceptEdits";
+  additionalDirectories?: string[];
+  permissionMode?: "default" | "plan" | "acceptEdits" | "bypassPermissions";
 }
 
 export interface AbortRequest {

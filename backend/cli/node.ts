@@ -14,7 +14,13 @@ import { setupLogger, logger } from "../utils/logger.ts";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { exit } from "../utils/os.ts";
-import { FileStateStore } from "../state/files.ts";
+import {
+  InMemorySessionStore,
+  type SessionStore,
+} from "@anthropic-ai/claude-agent-sdk";
+import { Pool } from "pg";
+import { MemoryRunStore } from "../state/memory.ts";
+import { PostgresSessionStore } from "../state/postgres.ts";
 
 async function main(runtime: NodeRuntime) {
   // Parse CLI arguments
@@ -35,14 +41,37 @@ async function main(runtime: NodeRuntime) {
   const __dirname =
     import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
   const staticPath = join(__dirname, "../static");
-  const stateStore = new FileStateStore(join(process.cwd(), ".state"));
+  const runStore = new MemoryRunStore();
+  const databaseUrl =
+    process.env.CLAUDE_CODE_BACKEND_SESSION_STORE_DATABASE_URL;
+  const schema = process.env.CLAUDE_CODE_BACKEND_SESSION_STORE_SCHEMA;
+  if (Boolean(databaseUrl) !== Boolean(schema)) {
+    throw new Error(
+      "Builder session store database URL and schema must be configured together",
+    );
+  }
+  let sessionStore: SessionStore = new InMemorySessionStore();
+  if (databaseUrl && schema) {
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      connectionTimeoutMillis: 10_000,
+      max: 2,
+    });
+    pool.on("error", (error) => {
+      logger.cli.error("PostgreSQL session store error: {error}", { error });
+    });
+    const postgres = new PostgresSessionStore(pool, schema);
+    await postgres.assertReady();
+    sessionStore = postgres;
+  }
 
   // Create application
   const app = createApp(runtime, {
     debugMode: args.debug,
     staticPath,
     cliPath,
-    stateStore,
+    runStore,
+    sessionStore,
   });
 
   // Start server (only show this message when everything is ready)

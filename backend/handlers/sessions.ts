@@ -1,7 +1,7 @@
 import {
-  getSessionInfo,
   getSessionMessages,
   listSessions,
+  type SessionStore,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { Context } from "hono";
 import type {
@@ -9,39 +9,30 @@ import type {
   CreateRunRequest,
   CreateRunResponse,
 } from "../../shared/types.ts";
-import type { AppStateStore, StoredSession } from "../state/types.ts";
 import { ChatRunManager } from "./chat.ts";
 
-export async function handleSessionsRequest(c: Context, state?: AppStateStore) {
+export async function handleSessionsRequest(
+  c: Context,
+  sessionStore: SessionStore,
+) {
   const directory = c.req.query("directory");
   const limit = readPositiveInteger(c.req.query("limit"));
   const offset = readPositiveInteger(c.req.query("offset")) ?? 0;
-  const local = await listSessions({
+  const sessions = await listSessions({
     ...(directory ? { dir: directory } : {}),
+    ...(limit ? { limit } : {}),
+    ...(offset ? { offset } : {}),
+    sessionStore,
   });
-  const managed =
-    state
-      ?.listManagedSessions()
-      .filter((session) => !directory || session.cwd === directory) ?? [];
-
-  const sessions = new Map<string, (typeof local)[number] | StoredSession>();
-  for (const session of managed) sessions.set(session.sessionId, session);
-  for (const session of local) sessions.set(session.sessionId, session);
-
-  return c.json({
-    sessions: [...sessions.values()]
-      .sort((a, b) => b.lastModified - a.lastModified)
-      .slice(offset, limit ? offset + limit : undefined),
-  });
+  return c.json({ sessions });
 }
 
 export async function handleSessionMessagesRequest(
   c: Context,
-  state?: AppStateStore,
+  sessionStore: SessionStore,
 ) {
   const sessionId = c.req.param("sessionId") ?? "";
-  const session = state?.getManagedSession(sessionId);
-  const directory = c.req.query("directory") || session?.cwd;
+  const directory = c.req.query("directory");
   const limit = readPositiveInteger(c.req.query("limit"));
   const offset = readPositiveInteger(c.req.query("offset"));
   const options = {
@@ -50,15 +41,10 @@ export async function handleSessionMessagesRequest(
     ...(offset ? { offset } : {}),
   };
 
-  let messages = state
-    ? await getSessionMessages(sessionId, {
-        ...options,
-        sessionStore: state,
-      })
-    : [];
-  if (!messages.length) {
-    messages = await getSessionMessages(sessionId, options);
-  }
+  const messages = await getSessionMessages(sessionId, {
+    ...options,
+    sessionStore,
+  });
   if (!messages.length) {
     return c.json({ error: "Session not found" }, 404);
   }
@@ -68,7 +54,6 @@ export async function handleSessionMessagesRequest(
 export async function handleResumeSessionRequest(
   c: Context,
   runs: ChatRunManager,
-  state?: AppStateStore,
 ) {
   const sessionId = c.req.param("sessionId") ?? "";
   let body: CreateRunRequest;
@@ -81,14 +66,10 @@ export async function handleResumeSessionRequest(
     return c.json({ error: "Message is required" }, 400);
   }
 
-  const session = state?.getManagedSession(sessionId);
-  const localSession = session ? undefined : await getSessionInfo(sessionId);
   const request: ChatRequest = {
     ...body,
     requestId: body.requestId || crypto.randomUUID(),
     sessionId,
-    workingDirectory:
-      body.workingDirectory || session?.cwd || localSession?.cwd,
   };
   if (runs.hasRun(request.requestId)) {
     return c.json({ error: "Run already exists" }, 409);

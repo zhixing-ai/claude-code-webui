@@ -8,14 +8,13 @@ import { PendingInteractions } from "./interactions";
 // Define minimal mock types for Claude Code SDK to maintain type safety in tests
 type MockClaudeCode = {
   query: typeof vi.fn;
+  InMemorySessionStore: new () => object;
 };
 
-vi.mock(
-  "@anthropic-ai/claude-agent-sdk",
-  (): MockClaudeCode => ({
-    query: vi.fn(),
-  }),
-);
+vi.mock("@anthropic-ai/claude-agent-sdk", (): MockClaudeCode => ({
+  query: vi.fn(),
+  InMemorySessionStore: class {},
+}));
 
 // Mock logger
 vi.mock("../utils/logger", () => ({
@@ -283,6 +282,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
         sessionId: "session-123",
         allowedTools: ["Bash", "Edit"],
         workingDirectory: "/project/path",
+        additionalDirectories: ["/system"],
         permissionMode: "plan",
       };
 
@@ -316,12 +316,49 @@ describe("Chat Handler - Permission Mode Tests", () => {
           resume: "session-123",
           allowedTools: ["Bash", "Edit"],
           cwd: "/project/path",
+          additionalDirectories: ["/system"],
           abortController: expect.any(AbortController),
           executable: "node",
           executableArgs: [],
           pathToClaudeCodeExecutable: "/path/to/claude-cli",
         }),
       });
+      const options = mockQuery.mock.calls[0]?.[0].options;
+      expect(options?.sessionStore).toBeDefined();
+      expect(options?.sessionStoreFlush).toBe("eager");
+    });
+
+    it("uses a caller-provided UUID for a new session", async () => {
+      const request: ChatRequest = {
+        message: "Start",
+        requestId: "new-session-run",
+        newSessionId: "33333333-3333-4333-8333-333333333333",
+      };
+      mockContext.req.json = vi.fn().mockResolvedValue(request);
+      mockQuery.mockReturnValue({
+        [Symbol.asyncIterator]: async function* () {
+          yield {
+            type: "assistant",
+            message: { content: [{ type: "text", text: "Response" }] },
+            session_id: request.newSessionId,
+            parent_tool_use_id: null,
+          } as any;
+        },
+        interrupt: vi.fn(),
+        next: vi.fn(),
+        return: vi.fn(),
+        throw: vi.fn(),
+      } as any);
+
+      await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+
+      const options = mockQuery.mock.calls[0]?.[0].options;
+      expect(options?.sessionId).toBe(request.newSessionId);
+      expect(options).not.toHaveProperty("resume");
     });
   });
 
@@ -711,6 +748,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
       mockContext.req.json = vi.fn().mockResolvedValue({
         message: "Ask me",
         requestId: "request-1",
+        permissionMode: "bypassPermissions",
       });
 
       const response = await handleChatRequest(
@@ -743,6 +781,14 @@ describe("Chat Handler - Permission Mode Tests", () => {
           questions,
           answers: { "Which format?": "Short" },
         },
+      });
+      expect(mockQuery).toHaveBeenCalledWith({
+        prompt: "Ask me",
+        options: expect.objectContaining({
+          permissionMode: "bypassPermissions",
+          allowDangerouslySkipPermissions: true,
+          canUseTool: expect.any(Function),
+        }),
       });
     });
 

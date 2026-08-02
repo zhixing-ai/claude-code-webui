@@ -160,6 +160,9 @@ The backend server supports the following command-line options:
 - `CLAUDE_CODE_WEBUI_PORT` (or `PORT`) - Same as `--port`
 - `CLAUDE_CODE_WEBUI_HOST` (or `HOST`) - Same as `--host`
 - `DEBUG` - Same as `--debug`
+- `CLAUDE_CODE_BACKEND_SESSION_STORE_DATABASE_URL` - PostgreSQL URL for the Agent SDK session store
+- `CLAUDE_CODE_BACKEND_SESSION_STORE_SCHEMA` - Tenant schema containing `claude_session_entries`
+- `CLAUDE_CONFIG_DIR` - Local Claude state directory; use a temporary path with an external session store
 
 ### Examples
 
@@ -183,7 +186,7 @@ claude-code-webui --claude-path /path/to/claude
 PORT=9000 DEBUG=true claude-code-webui
 ```
 
-### Session API and durable runs
+### Session API and run streams
 
 `POST /api/chat` remains compatible with the Web UI. The backend also exposes
 run-oriented endpoints for API clients:
@@ -206,12 +209,16 @@ or reverse proxy disconnects, reconnect to the run events endpoint with the
 last received sequence. The Web UI does this automatically for transient
 connection failures while the page remains open.
 
-Runs, stream events, interaction status, session metadata, and mirrored Claude
-transcripts are appended to `.state/state.ndjson` under the server's current
-working directory. A pending tool callback still cannot survive the Claude
-process itself exiting; after a server restart it is reported as interrupted
-and the session can be continued with the session messages API. A writer lease
-prevents two backend processes from modifying the same state directory.
+Runs, stream events, and interaction callbacks live in process memory. They
+support browser reconnect while that backend process is alive, but they do not
+survive a backend restart.
+
+When both session-store environment variables are set, the Agent SDK mirrors
+Claude transcripts to the tenant PostgreSQL schema and can resume a known
+session ID in a new run with the same working directory. The backend verifies
+the `claude_session_entries` table before it starts listening. Without those
+variables it uses the SDK in-memory store for local development. A pending
+AskUserQuestion or tool-permission callback cannot survive process exit.
 
 ---
 
@@ -241,9 +248,9 @@ This interface has no built-in authentication. Do not expose it directly to
 the public internet without an authenticated reverse proxy or equivalent
 access control.
 
-Mount `~/.claude` and the server working directory on persistent storage when
-sessions must survive sandbox recreation. The run and transcript journal is
-created automatically in `<working-directory>/.state`.
+Persist project files or generated Skills by mounting the working directory.
+Persist Claude sessions with the PostgreSQL session-store variables above;
+the backend does not create a `.state` journal.
 
 ---
 

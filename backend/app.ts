@@ -7,6 +7,10 @@
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import {
+  InMemorySessionStore,
+  type SessionStore,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { Runtime } from "./runtime/types.ts";
 import {
   type ConfigContext,
@@ -26,7 +30,8 @@ import {
 } from "./handlers/interactions.ts";
 import { logger } from "./utils/logger.ts";
 import { readBinaryFile } from "./utils/fs.ts";
-import type { AppStateStore } from "./state/types.ts";
+import type { RunStateStore } from "./state/types.ts";
+import { MemoryRunStore } from "./state/memory.ts";
 import {
   handleCreateRunRequest,
   handleInteractionRequest,
@@ -44,7 +49,8 @@ export interface AppConfig {
   debugMode: boolean;
   staticPath: string;
   cliPath: string; // Actual CLI script path detected by validateClaudeCli
-  stateStore?: AppStateStore;
+  runStore?: RunStateStore;
+  sessionStore?: SessionStore;
 }
 
 export function createApp(
@@ -52,15 +58,18 @@ export function createApp(
   config: AppConfig,
 ): Hono<ConfigContext> {
   const app = new Hono<ConfigContext>();
+  const runStore = config.runStore ?? new MemoryRunStore();
+  const sessionStore = config.sessionStore ?? new InMemorySessionStore();
 
   // Store AbortControllers for each request (shared with chat handler)
   const requestAbortControllers = new Map<string, AbortController>();
-  const interactions = new PendingInteractions(config.stateStore);
+  const interactions = new PendingInteractions(runStore);
   const runs = new ChatRunManager(
     config.cliPath,
     interactions,
     requestAbortControllers,
-    config.stateStore,
+    runStore,
+    sessionStore,
   );
 
   // CORS middleware
@@ -80,7 +89,8 @@ export function createApp(
       debugMode: config.debugMode,
       runtime,
       cliPath: config.cliPath,
-      stateStore: config.stateStore,
+      runStore,
+      sessionStore,
     }),
   );
 
@@ -108,27 +118,27 @@ export function createApp(
   app.post("/api/chat", (c) => handleChatRequest(c, runs));
 
   app.post("/api/runs", (c) => handleCreateRunRequest(c, runs));
-  app.get("/api/runs/:runId", (c) => handleRunRequest(c, config.stateStore));
+  app.get("/api/runs/:runId", (c) => handleRunRequest(c, runStore));
   app.get("/api/runs/:runId/events", (c) =>
-    handleRunEventsRequest(c, runs, config.stateStore),
+    handleRunEventsRequest(c, runs, runStore),
   );
   app.get("/api/runs/:runId/interactions", (c) =>
-    handleRunInteractionsRequest(c, config.stateStore),
+    handleRunInteractionsRequest(c, runStore),
   );
 
-  app.get("/api/sessions", (c) => handleSessionsRequest(c, config.stateStore));
+  app.get("/api/sessions", (c) => handleSessionsRequest(c, sessionStore));
   app.get("/api/sessions/:sessionId/messages", (c) =>
-    handleSessionMessagesRequest(c, config.stateStore),
+    handleSessionMessagesRequest(c, sessionStore),
   );
   app.post("/api/sessions/:sessionId/messages", (c) =>
-    handleResumeSessionRequest(c, runs, config.stateStore),
+    handleResumeSessionRequest(c, runs),
   );
 
   app.post("/api/interactions/:interactionId/respond", (c) =>
     handleInteractionResponse(c, interactions),
   );
   app.get("/api/interactions/:interactionId", (c) =>
-    handleInteractionRequest(c, config.stateStore),
+    handleInteractionRequest(c, runStore),
   );
 
   // Static file serving with SPA fallback

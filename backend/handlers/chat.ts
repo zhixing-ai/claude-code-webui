@@ -1,7 +1,7 @@
 import {
-  getSessionInfo,
-  importSessionToStore,
+  InMemorySessionStore,
   query,
+  type SessionStore,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { Context } from "hono";
 import type {
@@ -11,7 +11,8 @@ import type {
   SequencedStreamResponse,
   StreamResponse,
 } from "../../shared/types.ts";
-import type { AppStateStore, StoredRunEvent } from "../state/types.ts";
+import type { RunStateStore, StoredRunEvent } from "../state/types.ts";
+import { MemoryRunStore } from "../state/memory.ts";
 import { logger } from "../utils/logger.ts";
 import { PendingInteractions } from "./interactions.ts";
 
@@ -24,8 +25,6 @@ type ActiveRun = {
   request: ChatRequest;
   abortController: AbortController;
   subscribers: Set<Subscriber>;
-  events: StoredRunEvent[];
-  nextSequence: number;
 };
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -100,11 +99,12 @@ export class ChatRunManager {
     private readonly cliPath: string,
     private readonly interactions: PendingInteractions,
     private readonly requestAbortControllers: Map<string, AbortController>,
-    private readonly state?: AppStateStore,
-  ) { }
+    private readonly runStore: RunStateStore,
+    private readonly sessionStore: SessionStore,
+  ) {}
 
   hasRun(runId: string): boolean {
-    return this.active.has(runId) || Boolean(this.state?.getRun(runId));
+    return this.active.has(runId) || Boolean(this.runStore.getRun(runId));
   }
 
   start(request: ChatRequest): string {
@@ -116,19 +116,10 @@ export class ChatRunManager {
       request,
       abortController: new AbortController(),
       subscribers: new Set(),
-      events: [],
-      nextSequence: 1,
     };
     this.active.set(request.requestId, run);
     this.requestAbortControllers.set(request.requestId, run.abortController);
-    this.state?.createRun(request.requestId, request);
-    if (request.sessionId) {
-      this.state?.upsertSession(
-        request.sessionId,
-        request.workingDirectory,
-        request.message.slice(0, 120),
-      );
-    }
+    this.runStore.createRun(request.requestId, request);
     void this.execute(run);
     return request.requestId;
   }
@@ -137,12 +128,9 @@ export class ChatRunManager {
     let currentSubscriber: Subscriber | undefined;
     return new ReadableStream<Uint8Array>({
       start: (controller) => {
-        const storedRun = this.state?.getRun(runId);
+        const storedRun = this.runStore.getRun(runId);
         const activeRun = this.active.get(runId);
-        const events =
-          this.state?.getRunEvents(runId, after) ??
-          activeRun?.events.filter((event) => event.sequence > after) ??
-          [];
+        const events = this.runStore.getRunEvents(runId, after);
 
         for (const event of events) {
           controller.enqueue(this.encode(runId, event));
@@ -193,22 +181,6 @@ export class ChatRunManager {
     );
 
     try {
-      if (request.sessionId && this.state) {
-        const storedSession = await getSessionInfo(request.sessionId, {
-          ...(request.workingDirectory
-            ? { dir: request.workingDirectory }
-            : {}),
-          sessionStore: this.state,
-        });
-        if (!storedSession) {
-          await importSessionToStore(request.sessionId, this.state, {
-            ...(request.workingDirectory
-              ? { dir: request.workingDirectory }
-              : {}),
-          });
-        }
-      }
-
       for await (const sdkMessage of query({
         prompt: processedMessage,
         options: {
@@ -217,6 +189,7 @@ export class ChatRunManager {
           executableArgs: [],
           pathToClaudeCodeExecutable: this.cliPath,
           includePartialMessages: true,
+          ...(request.newSessionId ? { sessionId: request.newSessionId } : {}),
           ...(request.sessionId ? { resume: request.sessionId } : {}),
           ...(request.allowedTools
             ? { allowedTools: request.allowedTools }
@@ -224,15 +197,17 @@ export class ChatRunManager {
           ...(request.workingDirectory
             ? { cwd: request.workingDirectory }
             : {}),
+          ...(request.additionalDirectories
+            ? { additionalDirectories: request.additionalDirectories }
+            : {}),
           ...(request.permissionMode
             ? { permissionMode: request.permissionMode }
             : {}),
-          ...(this.state
-            ? {
-              sessionStore: this.state,
-              sessionStoreFlush: "eager" as const,
-            }
+          ...(request.permissionMode === "bypassPermissions"
+            ? { allowDangerouslySkipPermissions: true }
             : {}),
+          sessionStore: this.sessionStore,
+          sessionStoreFlush: "eager",
           canUseTool: async (toolName, input, permissionOptions) => {
             if (toolName === "AskUserQuestion") {
               const questions = readQuestions(input);
@@ -292,13 +267,15 @@ export class ChatRunManager {
       })) {
         logger.chat.debug("Claude SDK Message: {sdkMessage}", { sdkMessage });
         const sessionId = readSessionId(sdkMessage);
+        if (
+          request.newSessionId &&
+          sessionId &&
+          sessionId !== request.newSessionId
+        ) {
+          throw new Error("Claude returned a different session ID");
+        }
         if (sessionId) {
-          this.state?.setRunSession(request.requestId, sessionId);
-          this.state?.upsertSession(
-            sessionId,
-            request.workingDirectory,
-            request.message.slice(0, 120),
-          );
+          this.runStore.setRunSession(request.requestId, sessionId);
         }
         this.emit(request.requestId, {
           type: "claude_json",
@@ -328,7 +305,7 @@ export class ChatRunManager {
     } finally {
       this.interactions.cancelRequest(request.requestId, "Request ended");
       this.requestAbortControllers.delete(request.requestId);
-      this.state?.finishRun(request.requestId, status, errorMessage);
+      this.runStore.finishRun(request.requestId, status, errorMessage);
       this.finishSubscribers(run);
       this.active.delete(request.requestId);
     }
@@ -337,10 +314,8 @@ export class ChatRunManager {
   private emit(runId: string, event: StreamResponse): void {
     const run = this.active.get(runId);
     if (!run) return;
-    const sequence =
-      this.state?.appendRunEvent(runId, event) ?? run.nextSequence++;
+    const sequence = this.runStore.appendRunEvent(runId, event);
     const storedEvent = { sequence, event };
-    if (!this.state) run.events.push(storedEvent);
 
     for (const subscriber of run.subscribers) {
       try {
@@ -406,10 +381,12 @@ export async function handleChatRequest(
     runsOrControllers instanceof ChatRunManager
       ? runsOrControllers
       : new ChatRunManager(
-        c.var.config.cliPath,
-        legacyInteractions ?? new PendingInteractions(),
-        runsOrControllers,
-      );
+          c.var.config.cliPath,
+          legacyInteractions ?? new PendingInteractions(),
+          runsOrControllers,
+          c.var.config.runStore ?? new MemoryRunStore(),
+          c.var.config.sessionStore ?? new InMemorySessionStore(),
+        );
   let request: ChatRequest | null;
   try {
     request = readChatRequest(await c.req.json());
