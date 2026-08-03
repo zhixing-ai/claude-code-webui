@@ -29,8 +29,13 @@ describe("create run session identity", () => {
       context({ message: "start", newSessionId: "not-a-uuid" }),
       runs,
     );
+    const invalidPrompt = await handleCreateRunRequest(
+      context({ message: "start", systemPrompt: " " }),
+      runs,
+    );
 
     expect(ambiguous).toMatchObject({ status: 400 });
     expect(invalid).toMatchObject({ status: 400 });
+    expect(invalidPrompt).toMatchObject({ status: 400 });
   });
 });

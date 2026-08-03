@@ -30,7 +30,7 @@ spec:
     spec:
       automountServiceAccountToken: false
       containers:
-        - image: crpi-ibyis3h0u7rejkkz.cn-hangzhou.personal.cr.aliyuncs.com/merchant-ai-hangzhou/claude-code-backend:v8
+        - image: crpi-ibyis3h0u7rejkkz.cn-hangzhou.personal.cr.aliyuncs.com/merchant-ai-hangzhou/claude-code-backend:v8.1
           imagePullPolicy: IfNotPresent
           name: sandbox
           resources:

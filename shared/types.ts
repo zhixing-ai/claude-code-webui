@@ -63,6 +63,7 @@ export interface CreateRunRequest {
   allowedTools?: string[];
   workingDirectory?: string;
   additionalDirectories?: string[];
+  systemPrompt?: string;
   permissionMode?: "default" | "plan" | "acceptEdits" | "bypassPermissions";
 }
 
@@ -78,6 +79,7 @@ export interface ChatRequest {
   allowedTools?: string[];
   workingDirectory?: string;
   additionalDirectories?: string[];
+  systemPrompt?: string;
   permissionMode?: "default" | "plan" | "acceptEdits" | "bypassPermissions";
 }
 

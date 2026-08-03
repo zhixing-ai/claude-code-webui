@@ -200,6 +200,15 @@ export class ChatRunManager {
           ...(request.additionalDirectories
             ? { additionalDirectories: request.additionalDirectories }
             : {}),
+          ...(request.systemPrompt
+            ? {
+                systemPrompt: {
+                  type: "preset" as const,
+                  preset: "claude_code" as const,
+                  append: request.systemPrompt,
+                },
+              }
+            : {}),
           ...(request.permissionMode
             ? { permissionMode: request.permissionMode }
             : {}),
@@ -365,7 +374,9 @@ function readChatRequest(value: unknown): ChatRequest | null {
     typeof value.message !== "string" ||
     !value.message.trim() ||
     typeof value.requestId !== "string" ||
-    !value.requestId
+    !value.requestId ||
+    (value.systemPrompt !== undefined &&
+      (typeof value.systemPrompt !== "string" || !value.systemPrompt.trim()))
   ) {
     return null;
   }

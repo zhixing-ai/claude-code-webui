@@ -62,8 +62,16 @@ export async function handleResumeSessionRequest(
   } catch {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
-  if (typeof body.message !== "string" || !body.message.trim()) {
-    return c.json({ error: "Message is required" }, 400);
+  if (
+    typeof body.message !== "string" ||
+    !body.message.trim() ||
+    (body.systemPrompt !== undefined &&
+      (typeof body.systemPrompt !== "string" || !body.systemPrompt.trim()))
+  ) {
+    return c.json(
+      { error: "Message and system prompt must be non-empty strings" },
+      400,
+    );
   }
 
   const request: ChatRequest = {

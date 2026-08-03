@@ -204,6 +204,9 @@ GET  /api/runs/:runId/interactions
 POST /api/interactions/:interactionId/respond
 ```
 
+Run and chat requests may include `systemPrompt`. The backend appends it to the
+Claude Code preset; it does not restrict SDK Skill discovery.
+
 Claude execution is independent from the browser event stream. If the browser
 or reverse proxy disconnects, reconnect to the run events endpoint with the
 last received sequence. The Web UI does this automatically for transient

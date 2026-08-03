@@ -11,12 +11,16 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function readCreateRunRequest(value: unknown): CreateRunRequest | null {
+  const request = value as { message?: unknown; systemPrompt?: unknown };
   if (
     typeof value !== "object" ||
     value === null ||
     Array.isArray(value) ||
-    typeof (value as { message?: unknown }).message !== "string" ||
-    !(value as { message: string }).message.trim()
+    typeof request.message !== "string" ||
+    !request.message.trim() ||
+    (request.systemPrompt !== undefined &&
+      (typeof request.systemPrompt !== "string" ||
+        !request.systemPrompt.trim()))
   ) {
     return null;
   }

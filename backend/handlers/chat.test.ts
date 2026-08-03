@@ -11,10 +11,13 @@ type MockClaudeCode = {
   InMemorySessionStore: new () => object;
 };
 
-vi.mock("@anthropic-ai/claude-agent-sdk", (): MockClaudeCode => ({
-  query: vi.fn(),
-  InMemorySessionStore: class {},
-}));
+vi.mock(
+  "@anthropic-ai/claude-agent-sdk",
+  (): MockClaudeCode => ({
+    query: vi.fn(),
+    InMemorySessionStore: class {},
+  }),
+);
 
 // Mock logger
 vi.mock("../utils/logger", () => ({
@@ -283,6 +286,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
         allowedTools: ["Bash", "Edit"],
         workingDirectory: "/project/path",
         additionalDirectories: ["/system"],
+        systemPrompt: "Use the tenant sales Skill for every reply.",
         permissionMode: "plan",
       };
 
@@ -317,6 +321,11 @@ describe("Chat Handler - Permission Mode Tests", () => {
           allowedTools: ["Bash", "Edit"],
           cwd: "/project/path",
           additionalDirectories: ["/system"],
+          systemPrompt: {
+            type: "preset",
+            preset: "claude_code",
+            append: "Use the tenant sales Skill for every reply.",
+          },
           abortController: expect.any(AbortController),
           executable: "node",
           executableArgs: [],
