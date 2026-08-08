@@ -45,6 +45,42 @@ describe("PostgresSessionStore", () => {
     ).toThrow("Invalid session store schema");
   });
 
+  it("retries a load once after a transient connection failure", async () => {
+    const query = vi
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }),
+      )
+      .mockResolvedValueOnce({
+        rows: [{ entry: { type: "user", uuid: "entry-1" } }],
+      });
+    const store = new PostgresSessionStore(
+      { query } as unknown as Pool,
+      "tenant_demo",
+    );
+
+    await expect(
+      store.load({ projectKey: "-workspace", sessionId: "session-1" }),
+    ).resolves.toEqual([{ type: "user", uuid: "entry-1" }]);
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a non-connection load failure", async () => {
+    const error = Object.assign(new Error("permission denied"), {
+      code: "42501",
+    });
+    const query = vi.fn().mockRejectedValue(error);
+    const store = new PostgresSessionStore(
+      { query } as unknown as Pool,
+      "tenant_demo",
+    );
+
+    await expect(
+      store.load({ projectKey: "-workspace", sessionId: "session-1" }),
+    ).rejects.toBe(error);
+    expect(query).toHaveBeenCalledOnce();
+  });
+
   it("lists sessions and subagents and deletes the requested scope", async () => {
     const query = vi
       .fn()

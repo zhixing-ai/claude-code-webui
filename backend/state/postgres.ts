@@ -7,6 +7,31 @@ import type { Pool } from "pg";
 
 const IDENTIFIER = /^tenant_[a-z0-9_]+$/;
 
+function isRetryableConnectionError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code =
+    "code" in error && typeof error.code === "string" ? error.code : "";
+  return (
+    code.startsWith("08") ||
+    [
+      "57P01",
+      "57P02",
+      "57P03",
+      "ECONNREFUSED",
+      "ECONNRESET",
+      "EHOSTUNREACH",
+      "ENETRESET",
+      "ENETUNREACH",
+      "EPIPE",
+      "ERR_STREAM_DESTROYED",
+      "ETIMEDOUT",
+    ].includes(code) ||
+    /connection terminated|server closed the connection|query read timeout/i.test(
+      error.message,
+    )
+  );
+}
+
 export class PostgresSessionStore implements SessionStore {
   private readonly table: string;
 
@@ -45,14 +70,22 @@ export class PostgresSessionStore implements SessionStore {
   }
 
   async load(key: SessionKey): Promise<SessionStoreEntry[] | null> {
-    const result = await this.pool.query<{ entry: SessionStoreEntry }>(
-      `SELECT entry
-       FROM ${this.table}
-       WHERE session_id = $1
-         AND subpath IS NOT DISTINCT FROM $2
-       ORDER BY id`,
-      [key.sessionId, key.subpath ?? null],
-    );
+    const query = () =>
+      this.pool.query<{ entry: SessionStoreEntry }>(
+        `SELECT entry
+         FROM ${this.table}
+         WHERE session_id = $1
+           AND subpath IS NOT DISTINCT FROM $2
+         ORDER BY id`,
+        [key.sessionId, key.subpath ?? null],
+      );
+    let result;
+    try {
+      result = await query();
+    } catch (error) {
+      if (!isRetryableConnectionError(error)) throw error;
+      result = await query();
+    }
     return result.rows.length ? result.rows.map(({ entry }) => entry) : null;
   }
 

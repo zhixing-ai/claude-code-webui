@@ -217,6 +217,7 @@ export class ChatRunManager {
             : {}),
           sessionStore: this.sessionStore,
           sessionStoreFlush: "eager",
+          loadTimeoutMs: 90_000,
           canUseTool: async (toolName, input, permissionOptions) => {
             if (toolName === "AskUserQuestion") {
               const questions = readQuestions(input);

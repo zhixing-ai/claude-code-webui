@@ -54,8 +54,11 @@ async function main(runtime: NodeRuntime) {
   if (databaseUrl && schema) {
     const pool = new Pool({
       connectionString: databaseUrl,
-      connectionTimeoutMillis: 10_000,
-      max: 2,
+      connectionTimeoutMillis: 20_000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10_000,
+      max: 5,
+      query_timeout: 30_000,
     });
     pool.on("error", (error) => {
       logger.cli.error("PostgreSQL session store error: {error}", { error });

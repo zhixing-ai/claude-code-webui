@@ -335,6 +335,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
       const options = mockQuery.mock.calls[0]?.[0].options;
       expect(options?.sessionStore).toBeDefined();
       expect(options?.sessionStoreFlush).toBe("eager");
+      expect(options?.loadTimeoutMs).toBe(90_000);
     });
 
     it("uses a caller-provided UUID for a new session", async () => {
