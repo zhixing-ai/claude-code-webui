@@ -1,6 +1,9 @@
 import {
+  getSessionMessages,
   InMemorySessionStore,
   query,
+  type Options,
+  type SDKMessage,
   type SessionStore,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { Context } from "hono";
@@ -26,6 +29,65 @@ type ActiveRun = {
   abortController: AbortController;
   subscribers: Set<Subscriber>;
 };
+
+const CONTEXT_LIMIT =
+  /prompt is too long|exceeded model token limit|conversation too long/i;
+
+function isContextLimitMessage(message: unknown): boolean {
+  if (!isObject(message)) return false;
+  if (message.type === "result" && message.is_error === true) {
+    const errors = Array.isArray(message.errors) ? message.errors : [];
+    return [...errors, message.result].some(
+      (value) => typeof value === "string" && CONTEXT_LIMIT.test(value),
+    );
+  }
+  if (message.type !== "assistant") return false;
+  const payload = isObject(message.message) ? message.message : undefined;
+  return (
+    Array.isArray(payload?.content) &&
+    payload.content.some(
+      (item) =>
+        isObject(item) &&
+        item.type === "text" &&
+        typeof item.text === "string" &&
+        CONTEXT_LIMIT.test(item.text),
+    )
+  );
+}
+
+function isContextLimitError(error: unknown): boolean {
+  return error instanceof Error && CONTEXT_LIMIT.test(error.message);
+}
+
+function isCompactionAnchor(message: unknown): boolean {
+  if (
+    !isObject(message) ||
+    message.type !== "assistant" ||
+    isContextLimitMessage(message)
+  ) {
+    return false;
+  }
+  const payload = isObject(message.message) ? message.message : undefined;
+  return !(
+    Array.isArray(payload?.content) &&
+    payload.content.some((item) => isObject(item) && item.type === "tool_use")
+  );
+}
+
+function selectCompactionAnchors(messages: unknown[]): string[] {
+  const anchors = messages.flatMap((message) => {
+    if (!isCompactionAnchor(message) || !isObject(message)) return [];
+    return typeof message.uuid === "string" && message.uuid
+      ? [message.uuid]
+      : [];
+  });
+  const selected: string[] = [];
+  for (let offset = 1; offset <= anchors.length; offset *= 2) {
+    selected.push(anchors[anchors.length - offset]);
+  }
+  if (anchors[0] && selected.at(-1) !== anchors[0]) selected.push(anchors[0]);
+  return selected;
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -169,9 +231,6 @@ export class ChatRunManager {
 
   private async execute(run: ActiveRun): Promise<void> {
     const { request, abortController } = run;
-    const processedMessage = request.message.startsWith("/")
-      ? request.message.substring(1)
-      : request.message;
     let status: "completed" | "failed" | "aborted" = "completed";
     let errorMessage: string | undefined;
 
@@ -180,117 +239,224 @@ export class ChatRunManager {
       request as unknown as Record<string, unknown>,
     );
 
+    const options: Options = {
+      abortController,
+      executable: "node",
+      executableArgs: [],
+      pathToClaudeCodeExecutable: this.cliPath,
+      includePartialMessages: true,
+      ...(request.newSessionId ? { sessionId: request.newSessionId } : {}),
+      ...(request.sessionId ? { resume: request.sessionId } : {}),
+      ...(request.allowedTools ? { allowedTools: request.allowedTools } : {}),
+      ...(request.workingDirectory ? { cwd: request.workingDirectory } : {}),
+      ...(request.additionalDirectories
+        ? { additionalDirectories: request.additionalDirectories }
+        : {}),
+      ...(request.systemPrompt
+        ? {
+            systemPrompt: {
+              type: "preset" as const,
+              preset: "claude_code" as const,
+              append: request.systemPrompt,
+            },
+          }
+        : {}),
+      ...(request.permissionMode
+        ? { permissionMode: request.permissionMode }
+        : {}),
+      ...(request.permissionMode === "bypassPermissions"
+        ? { allowDangerouslySkipPermissions: true }
+        : {}),
+      sessionStore: this.sessionStore,
+      sessionStoreFlush: "eager",
+      loadTimeoutMs: 90_000,
+      settings: {
+        autoCompactEnabled: true,
+        precomputeCompactionEnabled: true,
+      },
+      canUseTool: async (toolName, input, permissionOptions) => {
+        if (toolName === "AskUserQuestion") {
+          const questions = readQuestions(input);
+          if (!questions) {
+            return {
+              behavior: "deny",
+              message: "Invalid AskUserQuestion input",
+            };
+          }
+
+          const pending = this.interactions.create(
+            request.requestId,
+            questions,
+            permissionOptions.signal,
+          );
+          this.emit(request.requestId, {
+            type: "ask_user_question",
+            interactionId: pending.interactionId,
+            questions,
+          });
+          return pending.response;
+        }
+
+        const pending = this.interactions.createPermission(
+          request.requestId,
+          toolName,
+          input,
+          permissionOptions.suggestions,
+          permissionOptions.signal,
+        );
+        this.emit(request.requestId, {
+          type: "tool_permission",
+          interactionId: pending.interactionId,
+          toolName,
+          input,
+          toolUseId: permissionOptions.toolUseID,
+          canRemember: Boolean(permissionOptions.suggestions?.length),
+          ...(permissionOptions.title
+            ? { title: permissionOptions.title }
+            : {}),
+          ...(permissionOptions.displayName
+            ? { displayName: permissionOptions.displayName }
+            : {}),
+          ...(permissionOptions.description
+            ? { description: permissionOptions.description }
+            : {}),
+          ...(permissionOptions.blockedPath
+            ? { blockedPath: permissionOptions.blockedPath }
+            : {}),
+          ...(permissionOptions.decisionReason
+            ? { decisionReason: permissionOptions.decisionReason }
+            : {}),
+        });
+        return pending.response;
+      },
+    };
+
+    const forward = (sdkMessage: SDKMessage) => {
+      logger.chat.debug("Claude SDK Message: {sdkMessage}", { sdkMessage });
+      const sessionId = readSessionId(sdkMessage);
+      if (
+        request.newSessionId &&
+        sessionId &&
+        sessionId !== request.newSessionId
+      ) {
+        throw new Error("Claude returned a different session ID");
+      }
+      if (sessionId) {
+        this.runStore.setRunSession(request.requestId, sessionId);
+      }
+      this.emit(request.requestId, {
+        type: "claude_json",
+        data: sdkMessage,
+      });
+    };
+
+    const executeQuery = async (
+      prompt: string,
+      queryOptions: Options,
+      suppressContextLimit = false,
+    ) => {
+      let contextLimit = false;
+      let progressed = false;
+      try {
+        for await (const sdkMessage of query({
+          prompt,
+          options: queryOptions,
+        })) {
+          if (suppressContextLimit && isContextLimitMessage(sdkMessage)) {
+            contextLimit = true;
+            continue;
+          }
+          progressed ||= sdkMessage.type !== "system";
+          forward(sdkMessage);
+        }
+        if (suppressContextLimit && contextLimit) {
+          throw new Error("Prompt is too long");
+        }
+      } catch (error) {
+        if (
+          suppressContextLimit &&
+          (contextLimit || isContextLimitError(error))
+        ) {
+          if (progressed) {
+            throw new Error(
+              "Session context limit reached after work started; automatic retry was skipped",
+            );
+          }
+          throw new Error("Builder session context limit reached", {
+            cause: error,
+          });
+        }
+        throw error;
+      }
+    };
+
     try {
-      for await (const sdkMessage of query({
-        prompt: processedMessage,
-        options: {
-          abortController,
-          executable: "node",
-          executableArgs: [],
-          pathToClaudeCodeExecutable: this.cliPath,
-          includePartialMessages: true,
-          ...(request.newSessionId ? { sessionId: request.newSessionId } : {}),
-          ...(request.sessionId ? { resume: request.sessionId } : {}),
-          ...(request.allowedTools
-            ? { allowedTools: request.allowedTools }
-            : {}),
+      try {
+        await executeQuery(request.message, options, true);
+      } catch (error) {
+        const cause = error instanceof Error ? error.cause : undefined;
+        const sessionId = request.sessionId ?? request.newSessionId;
+        if (
+          request.message === "/compact" ||
+          !sessionId ||
+          (!isContextLimitError(error) && !isContextLimitError(cause))
+        ) {
+          throw cause ?? error;
+        }
+
+        logger.chat.info("Compacting oversized session {sessionId}", {
+          sessionId,
+        });
+        const messages = await getSessionMessages(sessionId, {
           ...(request.workingDirectory
-            ? { cwd: request.workingDirectory }
-            : {}),
-          ...(request.additionalDirectories
-            ? { additionalDirectories: request.additionalDirectories }
-            : {}),
-          ...(request.systemPrompt
-            ? {
-                systemPrompt: {
-                  type: "preset" as const,
-                  preset: "claude_code" as const,
-                  append: request.systemPrompt,
-                },
-              }
-            : {}),
-          ...(request.permissionMode
-            ? { permissionMode: request.permissionMode }
-            : {}),
-          ...(request.permissionMode === "bypassPermissions"
-            ? { allowDangerouslySkipPermissions: true }
+            ? { dir: request.workingDirectory }
             : {}),
           sessionStore: this.sessionStore,
-          sessionStoreFlush: "eager",
-          loadTimeoutMs: 90_000,
-          canUseTool: async (toolName, input, permissionOptions) => {
-            if (toolName === "AskUserQuestion") {
-              const questions = readQuestions(input);
-              if (!questions) {
-                return {
-                  behavior: "deny",
-                  message: "Invalid AskUserQuestion input",
-                };
-              }
-
-              const pending = this.interactions.create(
-                request.requestId,
-                questions,
-                permissionOptions.signal,
-              );
-              this.emit(request.requestId, {
-                type: "ask_user_question",
-                interactionId: pending.interactionId,
-                questions,
-              });
-              return pending.response;
-            }
-
-            const pending = this.interactions.createPermission(
-              request.requestId,
-              toolName,
-              input,
-              permissionOptions.suggestions,
-              permissionOptions.signal,
-            );
-            this.emit(request.requestId, {
-              type: "tool_permission",
-              interactionId: pending.interactionId,
-              toolName,
-              input,
-              toolUseId: permissionOptions.toolUseID,
-              canRemember: Boolean(permissionOptions.suggestions?.length),
-              ...(permissionOptions.title
-                ? { title: permissionOptions.title }
-                : {}),
-              ...(permissionOptions.displayName
-                ? { displayName: permissionOptions.displayName }
-                : {}),
-              ...(permissionOptions.description
-                ? { description: permissionOptions.description }
-                : {}),
-              ...(permissionOptions.blockedPath
-                ? { blockedPath: permissionOptions.blockedPath }
-                : {}),
-              ...(permissionOptions.decisionReason
-                ? { decisionReason: permissionOptions.decisionReason }
-                : {}),
-            });
-            return pending.response;
-          },
-        },
-      })) {
-        logger.chat.debug("Claude SDK Message: {sdkMessage}", { sdkMessage });
-        const sessionId = readSessionId(sdkMessage);
-        if (
-          request.newSessionId &&
-          sessionId &&
-          sessionId !== request.newSessionId
-        ) {
-          throw new Error("Claude returned a different session ID");
-        }
-        if (sessionId) {
-          this.runStore.setRunSession(request.requestId, sessionId);
-        }
-        this.emit(request.requestId, {
-          type: "claude_json",
-          data: sdkMessage,
         });
+        const anchors = selectCompactionAnchors(messages);
+        if (!anchors.length) throw cause ?? error;
+
+        let compactedOptions: Options | undefined;
+        for (const resumeSessionAt of anchors) {
+          const recoveryOptions: Options = {
+            ...options,
+            sessionId: undefined,
+            resume: sessionId,
+            resumeSessionAt,
+          };
+          let compacted = false;
+          let stillTooLong = false;
+          try {
+            for await (const sdkMessage of query({
+              prompt: "/compact",
+              options: recoveryOptions,
+            })) {
+              compacted ||=
+                sdkMessage.type === "system" &&
+                sdkMessage.subtype === "compact_boundary";
+              stillTooLong ||= isContextLimitMessage(sdkMessage);
+            }
+          } catch (compactError) {
+            if (!isContextLimitError(compactError)) throw compactError;
+            stillTooLong = true;
+          }
+          if (compacted) {
+            compactedOptions = recoveryOptions;
+            break;
+          }
+          if (!stillTooLong) break;
+        }
+        if (!compactedOptions) {
+          throw new Error("Claude Code did not complete session compaction");
+        }
+        await executeQuery(
+          request.message,
+          {
+            ...compactedOptions,
+            resumeSessionAt: undefined,
+          },
+          true,
+        );
       }
 
       if (abortController.signal.aborted) {

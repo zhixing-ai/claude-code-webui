@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Context } from "hono";
 import { handleChatRequest } from "./chat";
 import type { ChatRequest } from "../../shared/types";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { getSessionMessages, query } from "@anthropic-ai/claude-agent-sdk";
 import { PendingInteractions } from "./interactions";
 
 // Define minimal mock types for Claude Code SDK to maintain type safety in tests
 type MockClaudeCode = {
+  getSessionMessages: typeof vi.fn;
   query: typeof vi.fn;
   InMemorySessionStore: new () => object;
 };
@@ -14,6 +15,7 @@ type MockClaudeCode = {
 vi.mock(
   "@anthropic-ai/claude-agent-sdk",
   (): MockClaudeCode => ({
+    getSessionMessages: vi.fn(),
     query: vi.fn(),
     InMemorySessionStore: class {},
   }),
@@ -24,12 +26,14 @@ vi.mock("../utils/logger", () => ({
   logger: {
     chat: {
       debug: vi.fn(),
+      info: vi.fn(),
       error: vi.fn(),
     },
   },
 }));
 
 const mockQuery = vi.mocked(query);
+const mockGetSessionMessages = vi.mocked(getSessionMessages);
 
 describe("Chat Handler - Permission Mode Tests", () => {
   let mockContext: Context;
@@ -403,13 +407,262 @@ describe("Chat Handler - Permission Mode Tests", () => {
         interactions,
       );
 
-      // Should strip the slash and pass "help" to SDK
+      // Slash commands are SDK input and must keep their leading slash.
       expect(mockQuery).toHaveBeenCalledWith({
-        prompt: "help",
+        prompt: "/help",
         options: expect.objectContaining({
           permissionMode: "plan",
         }),
       });
+    });
+
+    it("rewinds, compacts, and retries an oversized session without changing its ID", async () => {
+      const sessionId = "33333333-3333-4333-8333-333333333333";
+      const resumeSessionAt = "44444444-4444-4444-8444-444444444444";
+      mockContext.req.json = vi.fn().mockResolvedValue({
+        message: "Continue the builder work",
+        requestId: "context-limit-run",
+        sessionId,
+      });
+      mockGetSessionMessages.mockResolvedValue([
+        {
+          type: "assistant",
+          uuid: resumeSessionAt,
+          session_id: sessionId,
+          message: {
+            content: [{ type: "text", text: "Previous response" }],
+          },
+          parent_tool_use_id: null,
+          parent_agent_id: null,
+        },
+      ]);
+      mockQuery
+        .mockReturnValueOnce({
+          [Symbol.asyncIterator]: async function* () {
+            yield {
+              type: "result",
+              subtype: "error_during_execution",
+              is_error: true,
+              errors: [
+                "API Error: 400 Invalid request: Your request exceeded model token limit 262144",
+              ],
+              session_id: sessionId,
+            } as any;
+          },
+        } as any)
+        .mockReturnValueOnce({
+          [Symbol.asyncIterator]: async function* () {
+            yield {
+              type: "system",
+              subtype: "compact_boundary",
+              session_id: sessionId,
+            } as any;
+          },
+        } as any)
+        .mockReturnValueOnce({
+          [Symbol.asyncIterator]: async function* () {
+            yield {
+              type: "assistant",
+              message: {
+                content: [{ type: "text", text: "Recovered response" }],
+              },
+              session_id: sessionId,
+              parent_tool_use_id: null,
+            } as any;
+          },
+        } as any);
+
+      const response = await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+      const body = await new Response(response.body).text();
+
+      expect(mockQuery).toHaveBeenCalledTimes(3);
+      expect(mockQuery.mock.calls[1]?.[0]).toEqual({
+        prompt: "/compact",
+        options: expect.objectContaining({
+          resume: sessionId,
+          sessionId: undefined,
+          resumeSessionAt,
+        }),
+      });
+      expect(mockQuery.mock.calls[2]?.[0]).toEqual({
+        prompt: "Continue the builder work",
+        options: expect.objectContaining({
+          resume: sessionId,
+          sessionId: undefined,
+          resumeSessionAt: undefined,
+        }),
+      });
+      expect(body).toContain("Recovered response");
+      expect(body).not.toContain("exceeded model token limit");
+      expect(body).not.toContain('"type":"error"');
+      expect(body).toContain('"type":"done"');
+    });
+
+    it("does not retry the prompt when session compaction does not complete", async () => {
+      const sessionId = "33333333-3333-4333-8333-333333333333";
+      mockContext.req.json = vi.fn().mockResolvedValue({
+        message: "Continue the builder work",
+        requestId: "failed-compaction-run",
+        sessionId,
+      });
+      mockGetSessionMessages.mockResolvedValue([
+        {
+          type: "assistant",
+          uuid: "44444444-4444-4444-8444-444444444444",
+          session_id: sessionId,
+          message: { content: [{ type: "text", text: "Previous response" }] },
+          parent_tool_use_id: null,
+          parent_agent_id: null,
+        },
+      ]);
+      mockQuery
+        .mockReturnValueOnce({
+          [Symbol.asyncIterator]: async function* () {
+            yield {
+              type: "result",
+              subtype: "error_during_execution",
+              is_error: true,
+              errors: ["Prompt is too long"],
+              session_id: sessionId,
+            } as any;
+          },
+        } as any)
+        .mockReturnValueOnce({
+          [Symbol.asyncIterator]: async function* () {
+            yield {
+              type: "result",
+              subtype: "error_during_execution",
+              is_error: true,
+              errors: ["Prompt is too long"],
+              session_id: sessionId,
+            } as any;
+          },
+        } as any);
+
+      const response = await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+      const body = await new Response(response.body).text();
+
+      expect(mockQuery).toHaveBeenCalledTimes(2);
+      expect(body).toContain("Claude Code did not complete session compaction");
+      expect(body).not.toContain('"type":"done"');
+    });
+
+    it("rewinds farther when the first compaction attempt is still too long", async () => {
+      const sessionId = "33333333-3333-4333-8333-333333333333";
+      const olderAnchor = "44444444-4444-4444-8444-444444444444";
+      const recentAnchor = "55555555-5555-4555-8555-555555555555";
+      mockContext.req.json = vi.fn().mockResolvedValue({
+        message: "Continue the builder work",
+        requestId: "progressive-compaction-run",
+        sessionId,
+      });
+      mockGetSessionMessages.mockResolvedValue(
+        [olderAnchor, recentAnchor].map((uuid) => ({
+          type: "assistant" as const,
+          uuid,
+          session_id: sessionId,
+          message: { content: [{ type: "text", text: "Previous response" }] },
+          parent_tool_use_id: null,
+          parent_agent_id: null,
+        })),
+      );
+      mockQuery
+        .mockReturnValueOnce({
+          [Symbol.asyncIterator]: async function* () {
+            yield {
+              type: "result",
+              subtype: "error_during_execution",
+              is_error: true,
+              errors: ["Prompt is too long"],
+              session_id: sessionId,
+            } as any;
+          },
+        } as any)
+        .mockReturnValueOnce({
+          [Symbol.asyncIterator]: async function* () {
+            yield {
+              type: "result",
+              subtype: "error_during_execution",
+              is_error: true,
+              errors: ["Error during compaction: Conversation too long"],
+              session_id: sessionId,
+            } as any;
+          },
+        } as any)
+        .mockReturnValueOnce({
+          [Symbol.asyncIterator]: async function* () {
+            yield {
+              type: "system",
+              subtype: "compact_boundary",
+              session_id: sessionId,
+            } as any;
+          },
+        } as any)
+        .mockReturnValueOnce({
+          [Symbol.asyncIterator]: async function* () {
+            yield {
+              type: "assistant",
+              message: { content: [{ type: "text", text: "Recovered" }] },
+              session_id: sessionId,
+              parent_tool_use_id: null,
+            } as any;
+          },
+        } as any);
+
+      const response = await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+      const body = await new Response(response.body).text();
+
+      expect(mockQuery).toHaveBeenCalledTimes(4);
+      expect(mockQuery.mock.calls[1]?.[0].options?.resumeSessionAt).toBe(
+        recentAnchor,
+      );
+      expect(mockQuery.mock.calls[2]?.[0].options?.resumeSessionAt).toBe(
+        olderAnchor,
+      );
+      expect(body).toContain("Recovered");
+      expect(body).toContain('"type":"done"');
+    });
+
+    it("does not replay a prompt after the run has produced output", async () => {
+      mockContext.req.json = vi.fn().mockResolvedValue({
+        message: "Continue the builder work",
+        requestId: "partially-completed-run",
+        sessionId: "33333333-3333-4333-8333-333333333333",
+      });
+      mockQuery.mockReturnValue({
+        [Symbol.asyncIterator]: async function* () {
+          yield {
+            type: "assistant",
+            message: { content: [{ type: "text", text: "Work started" }] },
+            session_id: "33333333-3333-4333-8333-333333333333",
+            parent_tool_use_id: null,
+          } as any;
+          throw new Error("Prompt is too long");
+        },
+      } as any);
+
+      const response = await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+      const body = await new Response(response.body).text();
+
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(body).toContain("automatic retry was skipped");
+      expect(body).not.toContain('"type":"done"');
     });
 
     it("should handle regular messages with permissionMode", async () => {
