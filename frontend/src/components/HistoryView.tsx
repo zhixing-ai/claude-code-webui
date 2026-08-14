@@ -56,20 +56,16 @@ export function HistoryView({
   }, [refreshToken, workingDirectory]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80 shadow-sm backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-800/80">
-      <div className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3 dark:border-slate-700/70">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-[var(--surface-panel)] shadow-[0_2px_12px_rgba(15,23,42,0.08)] ring-1 ring-[var(--border-subtle)]">
+      <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-4 py-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Conversations
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            This project
-          </p>
+          <h2 className="text-sm font-semibold">Conversations</h2>
+          <p className="text-xs text-[var(--text-tertiary)]">This project</p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 xl:hidden dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+          className="rounded-lg p-2 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] xl:hidden"
           aria-label="Close conversation list"
         >
           <XMarkIcon className="h-5 w-5" />
@@ -81,7 +77,7 @@ export function HistoryView({
           type="button"
           onClick={onNew}
           disabled={disabled}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-[var(--text-primary)] px-3 py-2.5 text-sm font-medium text-[var(--surface-panel)] transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <PlusIcon className="h-4 w-4" />
           New conversation
@@ -90,20 +86,20 @@ export function HistoryView({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {loading || !workingDirectory ? (
-          <p className="px-3 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+          <p className="px-3 py-6 text-center text-sm text-[var(--text-tertiary)]">
             Loading conversations...
           </p>
         ) : error ? (
-          <p className="px-3 py-6 text-center text-sm text-red-600 dark:text-red-400">
+          <p className="px-3 py-6 text-center text-sm text-[var(--danger)]">
             {error}
           </p>
         ) : conversations.length === 0 ? (
           <div className="px-3 py-8 text-center">
-            <ChatBubbleLeftRightIcon className="mx-auto h-7 w-7 text-slate-400" />
-            <p className="mt-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+            <ChatBubbleLeftRightIcon className="mx-auto h-7 w-7 text-[var(--text-tertiary)]" />
+            <p className="mt-2 text-sm font-medium text-[var(--text-secondary)]">
               No conversations yet
             </p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-xs text-[var(--text-tertiary)]">
               Start one above.
             </p>
           </div>
@@ -125,8 +121,8 @@ export function HistoryView({
                     aria-current={selected ? "page" : undefined}
                     className={`w-full rounded-xl px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       selected
-                        ? "bg-blue-50 text-blue-900 ring-1 ring-blue-200 dark:bg-blue-950/50 dark:text-blue-100 dark:ring-blue-800"
-                        : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700/70"
+                        ? "bg-[var(--accent-soft)] text-[var(--text-primary)] ring-1 ring-[var(--accent)]/25"
+                        : "text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
                     }`}
                   >
                     <span className="block truncate text-sm font-medium">
@@ -135,11 +131,11 @@ export function HistoryView({
                     {conversation.customTitle &&
                       conversation.summary &&
                       conversation.summary !== conversation.customTitle && (
-                        <span className="mt-1 block truncate text-xs text-slate-600 dark:text-slate-300">
+                        <span className="mt-1 block truncate text-xs text-[var(--text-secondary)]">
                           {conversation.summary}
                         </span>
                       )}
-                    <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                    <span className="mt-1 block text-xs text-[var(--text-tertiary)]">
                       {new Date(conversation.lastModified).toLocaleString()}
                     </span>
                   </button>

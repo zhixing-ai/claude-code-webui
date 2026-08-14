@@ -63,8 +63,8 @@ describe("PlanPermissionInputPanel", () => {
         .getByText("Yes, and auto-accept edits")
         .closest("button")!;
       expect(acceptWithEditsButton).toHaveClass(
-        "bg-green-50",
-        "border-green-500",
+        "bg-[var(--success-soft)]",
+        "ring-[var(--success)]/40",
       );
     });
   });
@@ -125,7 +125,10 @@ describe("PlanPermissionInputPanel", () => {
       fireEvent.mouseEnter(acceptDefaultButton);
 
       expect(mockOnSelectionChange).toHaveBeenCalledWith("acceptDefault");
-      expect(acceptDefaultButton).toHaveClass("bg-blue-50", "border-blue-500");
+      expect(acceptDefaultButton).toHaveClass(
+        "bg-[var(--accent-soft)]",
+        "ring-[var(--accent)]/40",
+      );
     });
   });
 
@@ -237,7 +240,10 @@ describe("PlanPermissionInputPanel", () => {
       const acceptDefaultButton = screen
         .getByText("Yes, and manually approve edits")
         .closest("button")!;
-      expect(acceptDefaultButton).toHaveClass("bg-blue-50", "border-blue-500");
+      expect(acceptDefaultButton).toHaveClass(
+        "bg-[var(--accent-soft)]",
+        "ring-[var(--accent)]/40",
+      );
     });
 
     it("should not respond to keyboard navigation when externally controlled", () => {
@@ -261,7 +267,10 @@ describe("PlanPermissionInputPanel", () => {
       const acceptDefaultButton = screen
         .getByText("Yes, and manually approve edits")
         .closest("button")!;
-      expect(acceptDefaultButton).toHaveClass("bg-blue-50", "border-blue-500");
+      expect(acceptDefaultButton).toHaveClass(
+        "bg-[var(--accent-soft)]",
+        "ring-[var(--accent)]/40",
+      );
     });
 
     it("should not reset selection on mouse leave when externally controlled", () => {
@@ -281,7 +290,10 @@ describe("PlanPermissionInputPanel", () => {
       fireEvent.mouseLeave(acceptDefaultButton);
 
       // Selection should remain unchanged in external control mode
-      expect(acceptDefaultButton).toHaveClass("bg-blue-50", "border-blue-500");
+      expect(acceptDefaultButton).toHaveClass(
+        "bg-[var(--accent-soft)]",
+        "ring-[var(--accent)]/40",
+      );
     });
 
     it("should handle external selection change", () => {
@@ -307,7 +319,10 @@ describe("PlanPermissionInputPanel", () => {
       const keepPlanningButton = screen
         .getByText("No, keep planning")
         .closest("button")!;
-      expect(keepPlanningButton).toHaveClass("bg-slate-50", "border-slate-400");
+      expect(keepPlanningButton).toHaveClass(
+        "bg-[var(--surface-hover)]",
+        "ring-[var(--border-strong)]",
+      );
     });
   });
 

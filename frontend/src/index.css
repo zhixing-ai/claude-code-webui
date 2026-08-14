@@ -1,3 +1,112 @@
 @import "tailwindcss";
 
 @variant dark (.dark &);
+
+:root {
+  color-scheme: light;
+  font-family:
+    "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --bg-app: #f5f5f5;
+  --surface-panel: #ffffff;
+  --surface-muted: #f5f5f5;
+  --surface-hover: #eeeeee;
+  --border-subtle: #e5e5e5;
+  --border-strong: #d4d4d4;
+  --text-primary: #0a0a0a;
+  --text-secondary: #525252;
+  --text-tertiary: #737373;
+  --accent: #ffab33;
+  --accent-strong: #9a5b00;
+  --accent-soft: #fff4e5;
+  --accent-text: #422006;
+  --success: #15803d;
+  --success-soft: #dcfce7;
+  --danger: #b91c1c;
+  --chat-user-bg: #171717;
+  --chat-user-text: #fafafa;
+  --chat-assistant-bg: #f5f5f5;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg-app: #0a0a0a;
+  --surface-panel: #171717;
+  --surface-muted: #262626;
+  --surface-hover: #303030;
+  --border-subtle: rgb(255 255 255 / 10%);
+  --border-strong: rgb(255 255 255 / 16%);
+  --text-primary: #fafafa;
+  --text-secondary: #d4d4d4;
+  --text-tertiary: #a3a3a3;
+  --accent-strong: #ffc470;
+  --accent-soft: #33230a;
+  --success: #86efac;
+  --success-soft: rgb(34 197 94 / 18%);
+  --danger: #f87171;
+  --chat-user-bg: #e5e5e5;
+  --chat-user-text: #171717;
+  --chat-assistant-bg: #262626;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+
+@keyframes builder-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes thinking-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+.builder-enter {
+  animation: builder-enter 240ms ease-out both;
+}
+
+.thinking-shimmer {
+  animation: thinking-shimmer 1.5s ease-in-out infinite;
+  background: linear-gradient(
+    90deg,
+    var(--text-tertiary) 0%,
+    var(--text-tertiary) 35%,
+    var(--text-primary) 50%,
+    var(--text-tertiary) 65%,
+    var(--text-tertiary) 100%
+  );
+  background-clip: text;
+  background-size: 300% 100%;
+  color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .builder-enter,
+  .thinking-shimmer {
+    animation: none;
+  }
+
+  .thinking-shimmer {
+    background: none;
+    color: var(--text-secondary);
+  }
+}

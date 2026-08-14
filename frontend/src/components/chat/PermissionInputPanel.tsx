@@ -14,7 +14,7 @@ function renderPermissionContent(patterns: string[]): JSX.Element {
   // Handle empty patterns array
   if (patterns.length === 0) {
     return (
-      <p className="text-slate-600 dark:text-slate-300 mb-3">
+      <p className="mb-3 text-[var(--text-secondary)]">
         Claude wants to use bash commands, but the specific commands could not
         be determined.
       </p>
@@ -29,14 +29,14 @@ function renderPermissionContent(patterns: string[]): JSX.Element {
 
     return (
       <>
-        <p className="text-slate-600 dark:text-slate-300 mb-2">
+        <p className="mb-2 text-[var(--text-secondary)]">
           Claude wants to use the following commands:
         </p>
         <div className="flex flex-wrap gap-2 mb-3">
           {commandNames.map((cmd, index) => (
             <span
               key={index}
-              className="font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-sm"
+              className="rounded bg-[var(--surface-hover)] px-2 py-1 font-mono text-sm"
             >
               {cmd}
             </span>
@@ -47,9 +47,9 @@ function renderPermissionContent(patterns: string[]): JSX.Element {
   } else {
     const commandName = extractCommandName(patterns[0]);
     return (
-      <p className="text-slate-600 dark:text-slate-300 mb-3">
+      <p className="mb-3 text-[var(--text-secondary)]">
         Claude wants to use the{" "}
-        <span className="font-mono bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-sm">
+        <span className="rounded bg-[var(--surface-hover)] px-2 py-1 font-mono text-sm">
           {commandName}
         </span>{" "}
         command.
@@ -178,30 +178,28 @@ export function PermissionInputPanel({
   ]);
 
   return (
-    <div className="flex-shrink-0 px-4 py-4 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl backdrop-blur-sm shadow-sm">
+    <div className="builder-enter flex-shrink-0 rounded-xl bg-[var(--surface-panel)] px-4 py-4 ring-1 ring-[var(--border-subtle)]">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 bg-amber-100 dark:bg-amber-900/20 rounded-lg">
-          <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+        <div className="rounded-lg bg-[var(--accent-soft)] p-2">
+          <ExclamationTriangleIcon className="h-5 w-5 text-[var(--accent-strong)]" />
         </div>
-        <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-          Permission Required
-        </h3>
+        <h3 className="text-base font-semibold">Permission Required</h3>
       </div>
 
       {/* Content */}
       <div className="mb-4">
         {title ? (
-          <p className="text-slate-600 dark:text-slate-300 mb-2">{title}</p>
+          <p className="mb-2 text-[var(--text-secondary)]">{title}</p>
         ) : (
           renderPermissionContent(patterns)
         )}
         {description && (
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
+          <p className="mb-3 text-sm text-[var(--text-tertiary)]">
             {description}
           </p>
         )}
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-[var(--text-tertiary)]">
           Do you want to proceed? (Press ESC to deny)
         </p>
       </div>
@@ -227,18 +225,18 @@ export function PermissionInputPanel({
           }}
           className={getButtonClassName(
             "allow",
-            `w-full p-3 rounded-lg cursor-pointer transition-all duration-200 text-left focus:outline-none ${
+            `w-full p-3 rounded-lg cursor-pointer transition-[background-color,box-shadow] duration-200 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
               effectiveSelectedOption === "allow"
-                ? "bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 shadow-sm"
-                : "border-2 border-transparent"
+                ? "bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]/40"
+                : "hover:bg-[var(--surface-hover)] ring-1 ring-transparent"
             }`,
           )}
         >
           <span
             className={`text-sm font-medium ${
               effectiveSelectedOption === "allow"
-                ? "text-blue-700 dark:text-blue-300"
-                : "text-slate-700 dark:text-slate-300"
+                ? "text-[var(--accent-strong)]"
+                : "text-[var(--text-secondary)]"
             }`}
           >
             Yes
@@ -265,18 +263,18 @@ export function PermissionInputPanel({
             }}
             className={getButtonClassName(
               "allowPermanent",
-              `w-full p-3 rounded-lg cursor-pointer transition-all duration-200 text-left focus:outline-none ${
+              `w-full p-3 rounded-lg cursor-pointer transition-[background-color,box-shadow] duration-200 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
                 effectiveSelectedOption === "allowPermanent"
-                  ? "bg-green-50 dark:bg-green-900/20 border-2 border-green-500 dark:border-green-400 shadow-sm"
-                  : "border-2 border-transparent"
+                  ? "bg-[var(--success-soft)] ring-1 ring-[var(--success)]/40"
+                  : "hover:bg-[var(--surface-hover)] ring-1 ring-transparent"
               }`,
             )}
           >
             <span
               className={`text-sm font-medium ${
                 effectiveSelectedOption === "allowPermanent"
-                  ? "text-green-700 dark:text-green-300"
-                  : "text-slate-700 dark:text-slate-300"
+                  ? "text-[var(--success)]"
+                  : "text-[var(--text-secondary)]"
               }`}
             >
               {renderPermanentButtonText(patterns)}
@@ -303,18 +301,18 @@ export function PermissionInputPanel({
           }}
           className={getButtonClassName(
             "deny",
-            `w-full p-3 rounded-lg cursor-pointer transition-all duration-200 text-left focus:outline-none ${
+            `w-full p-3 rounded-lg cursor-pointer transition-[background-color,box-shadow] duration-200 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
               effectiveSelectedOption === "deny"
-                ? "bg-slate-50 dark:bg-slate-800 border-2 border-slate-400 dark:border-slate-500 shadow-sm"
-                : "border-2 border-transparent"
+                ? "bg-[var(--surface-hover)] ring-1 ring-[var(--border-strong)]"
+                : "hover:bg-[var(--surface-hover)] ring-1 ring-transparent"
             }`,
           )}
         >
           <span
             className={`text-sm font-medium ${
               effectiveSelectedOption === "deny"
-                ? "text-slate-800 dark:text-slate-200"
-                : "text-slate-700 dark:text-slate-300"
+                ? "text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)]"
             }`}
           >
             No

@@ -1,169 +1,175 @@
 import {
   CheckIcon,
-  ChevronDownIcon,
-  ListBulletIcon,
+  InformationCircleIcon,
+  LightBulbIcon,
 } from "@heroicons/react/24/outline";
 import type { ClaudeTask } from "../../utils/taskProjection";
 
 interface TaskSidebarProps {
   tasks: ClaudeTask[];
+  isLoading: boolean;
 }
 
-export function TaskSidebar({ tasks }: TaskSidebarProps) {
-  if (tasks.length === 0) return null;
-
-  return (
-    <>
-      <details className="group rounded-2xl border border-slate-200/70 bg-white/80 shadow-sm backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-800/80 lg:hidden">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">
-          <TaskSummary tasks={tasks} compact />
-          <ChevronDownIcon className="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none" />
-        </summary>
-        <div className="max-h-64 overflow-y-auto border-t border-slate-200/70 px-3 py-2 dark:border-slate-700/70">
-          <TaskList tasks={tasks} />
-        </div>
-      </details>
-
-      <aside
-        aria-label="Claude task progress"
-        className="hidden min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80 shadow-sm backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-800/80 lg:flex"
-      >
-        <div className="border-b border-slate-200/70 px-4 py-4 dark:border-slate-700/70">
-          <TaskSummary tasks={tasks} />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          <TaskList tasks={tasks} />
-        </div>
-      </aside>
-    </>
-  );
-}
-
-function TaskSummary({
-  tasks,
-  compact = false,
-}: {
-  tasks: ClaudeTask[];
-  compact?: boolean;
-}) {
+export function TaskSidebar({ tasks, isLoading }: TaskSidebarProps) {
   const completed = tasks.filter((task) => task.status === "completed").length;
-  const percent = Math.round((completed / tasks.length) * 100);
+  const percent = tasks.length
+    ? Math.round((completed / tasks.length) * 100)
+    : 0;
+  const current = tasks.find((task) => task.status === "in_progress");
 
   return (
-    <div className={compact ? "min-w-0 flex-1" : undefined}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-300">
-            <ListBulletIcon className="h-4 w-4" />
-          </span>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Tasks
-            </h2>
-            {!compact && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Claude&apos;s current checklist
+    <aside
+      aria-label="Claude task progress"
+      className="hidden min-h-0 w-[320px] shrink-0 flex-col overflow-hidden rounded-2xl bg-[var(--surface-panel)] shadow-[0_2px_12px_rgba(15,23,42,0.08)] ring-1 ring-[var(--border-subtle)] lg:flex 2xl:w-[360px]"
+    >
+      <div className="shrink-0 border-b border-[var(--border-subtle)] px-5 pt-5 pb-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[13px] font-semibold">Build progress</h2>
+          {isLoading && tasks.length === 0 && (
+            <span
+              className="size-3.5 animate-spin rounded-full border-2 border-[var(--border-strong)] border-t-[var(--text-primary)] motion-reduce:animate-none"
+              aria-label="Preparing tasks"
+            />
+          )}
+        </div>
+        {tasks.length > 0 ? (
+          <>
+            <p className="mt-3 flex items-baseline gap-1">
+              <span className="text-2xl leading-none font-semibold tabular-nums">
+                {completed}
+              </span>
+              <span className="text-sm text-[var(--text-tertiary)]">
+                / {tasks.length}
+              </span>
+            </p>
+            {current && (
+              <p className="mt-1.5 truncate text-[11px] text-[var(--text-secondary)]">
+                Current: {current.subject}
               </p>
             )}
-          </div>
-        </div>
-        <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300">
-          {completed}/{tasks.length}
-        </span>
-      </div>
-      <div
-        className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
-        role="progressbar"
-        aria-label="Task completion"
-        aria-valuemin={0}
-        aria-valuemax={tasks.length}
-        aria-valuenow={completed}
-      >
+          </>
+        ) : null}
         <div
-          className="h-full rounded-full bg-blue-500 transition-[width] duration-300 motion-reduce:transition-none"
-          style={{ width: `${percent}%` }}
-        />
+          className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--surface-hover)]"
+          role="progressbar"
+          aria-label="Task completion"
+          aria-valuemin={0}
+          aria-valuemax={tasks.length || 1}
+          aria-valuenow={completed}
+        >
+          <div
+            className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300 motion-reduce:transition-none"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
       </div>
-    </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        {tasks.length > 0 ? (
+          <ol className="flex flex-col">
+            {tasks.map((task, index) => (
+              <TaskStep
+                key={task.id}
+                task={task}
+                last={index === tasks.length - 1}
+              />
+            ))}
+          </ol>
+        ) : isLoading ? (
+          <TaskSkeleton />
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center px-5 text-center">
+            <InformationCircleIcon className="size-5 text-[var(--text-tertiary)]" />
+            <p className="mt-2 text-xs leading-5 text-[var(--text-tertiary)]">
+              Claude&apos;s checklist will appear here when the build starts.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 px-4 pb-4">
+        <div className="flex items-start gap-2 rounded-lg bg-[var(--accent-soft)]/70 p-3 text-[11px] leading-relaxed text-[var(--text-secondary)]">
+          <LightBulbIcon className="mt-0.5 size-3.5 shrink-0 text-[var(--accent-strong)]" />
+          Tasks update automatically as Claude plans and works.
+        </div>
+      </div>
+    </aside>
   );
 }
 
-function TaskList({ tasks }: { tasks: ClaudeTask[] }) {
+function TaskStep({ task, last }: { task: ClaudeTask; last: boolean }) {
   return (
-    <ol className="space-y-1">
-      {tasks.map((task) => (
-        <li
-          key={task.id}
-          className={`flex gap-3 rounded-xl px-2.5 py-2.5 ${
+    <li className={`builder-enter relative flex gap-3 ${last ? "" : "pb-5"}`}>
+      {!last && (
+        <span
+          aria-hidden="true"
+          className="absolute top-5 left-[7.5px] h-[calc(100%-20px)] w-px bg-[var(--border-subtle)]"
+        />
+      )}
+      <TaskMarker status={task.status} />
+      <div className="min-w-0 flex-1">
+        <p
+          className={`text-[13px] leading-4 ${
             task.status === "in_progress"
-              ? "bg-blue-50/90 dark:bg-blue-950/40"
-              : ""
+              ? "font-semibold"
+              : "font-medium text-[var(--text-secondary)]"
           }`}
         >
-          <TaskStatusIcon status={task.status} />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <p
-                className={`text-sm leading-5 ${
-                  task.status === "completed"
-                    ? "text-slate-500 line-through decoration-slate-300 dark:text-slate-500 dark:decoration-slate-600"
-                    : "font-medium text-slate-800 dark:text-slate-100"
-                }`}
-              >
-                {task.subject}
-              </p>
-              <span className="mt-0.5 shrink-0 font-mono text-[10px] text-slate-400 dark:text-slate-500">
-                #{task.id}
-              </span>
-            </div>
-            {task.status === "in_progress" && task.activeForm && (
-              <p className="mt-0.5 line-clamp-2 text-xs leading-4 text-blue-600 dark:text-blue-300">
-                {task.activeForm}
-              </p>
-            )}
-            {(task.owner || task.blockedBy.length > 0) && (
-              <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px] font-medium">
-                {task.owner && (
-                  <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-500 dark:bg-slate-700 dark:text-slate-300">
-                    {task.owner}
-                  </span>
-                )}
-                {task.blockedBy.length > 0 && (
-                  <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
-                    Blocked by {task.blockedBy.map((id) => `#${id}`).join(", ")}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        </li>
-      ))}
-    </ol>
+          {task.subject}
+        </p>
+        {task.status === "in_progress" && task.activeForm ? (
+          <p className="mt-1 text-[11px] leading-relaxed text-[var(--success)]">
+            {task.activeForm}
+          </p>
+        ) : task.owner || task.blockedBy.length > 0 ? (
+          <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+            {[
+              task.owner,
+              task.blockedBy.length
+                ? `Blocked by ${task.blockedBy.join(", ")}`
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        ) : null}
+      </div>
+    </li>
   );
 }
 
-function TaskStatusIcon({ status }: { status: ClaudeTask["status"] }) {
+function TaskMarker({ status }: { status: ClaudeTask["status"] }) {
   if (status === "completed") {
     return (
-      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
-        <CheckIcon className="h-3.5 w-3.5" strokeWidth={2.5} />
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-green-600 text-white">
+        <CheckIcon className="size-2.5" strokeWidth={3.5} />
       </span>
     );
   }
-
   if (status === "in_progress") {
     return (
-      <span
-        className="mt-1 h-4 w-4 shrink-0 rounded-full border-2 border-blue-200 border-t-blue-600 motion-safe:animate-spin dark:border-blue-900 dark:border-t-blue-300"
-        aria-label="In progress"
-      />
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-green-600/15">
+        <span className="size-2 animate-pulse rounded-full bg-green-600 motion-reduce:animate-none" />
+      </span>
     );
   }
-
   return (
-    <span
-      className="mt-1 h-4 w-4 shrink-0 rounded-full border-2 border-slate-300 dark:border-slate-600"
-      aria-label="Pending"
-    />
+    <span className="size-4 shrink-0 rounded-full border border-[var(--border-strong)]" />
+  );
+}
+
+function TaskSkeleton() {
+  return (
+    <div aria-hidden="true" className="flex flex-col">
+      {[0, 1, 2, 3].map((index) => (
+        <div className="flex gap-3 pb-5" key={index}>
+          <span className="size-4 shrink-0 animate-pulse rounded-full bg-[var(--surface-hover)] motion-reduce:animate-none" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <span className="block h-3 w-3/5 animate-pulse rounded bg-[var(--surface-hover)] motion-reduce:animate-none" />
+            <span className="block h-2 w-full animate-pulse rounded bg-[var(--surface-hover)] motion-reduce:animate-none" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

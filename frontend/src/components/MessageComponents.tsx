@@ -43,30 +43,15 @@ interface ChatMessageComponentProps {
 export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
   const isUser = message.role === "user";
   const colorScheme = isUser
-    ? "bg-blue-600 text-white"
-    : "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100";
+    ? "bg-[var(--chat-user-bg)] text-[var(--chat-user-text)] sm:max-w-[80%]"
+    : "bg-[var(--chat-assistant-bg)] text-[var(--text-primary)]";
 
   return (
     <MessageContainer
       alignment={isUser ? "right" : "left"}
       colorScheme={colorScheme}
     >
-      <div className="mb-2 flex items-center justify-between gap-4">
-        <div
-          className={`text-xs font-semibold opacity-90 ${
-            isUser ? "text-blue-100" : "text-slate-600 dark:text-slate-400"
-          }`}
-        >
-          {isUser ? "User" : "Claude"}
-        </div>
-        <TimestampComponent
-          timestamp={message.timestamp}
-          className={`text-xs opacity-70 ${
-            isUser ? "text-blue-200" : "text-slate-500 dark:text-slate-500"
-          }`}
-        />
-      </div>
-      <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed">
+      <pre className="font-sans text-[14px] leading-7 whitespace-pre-wrap">
         {message.content}
       </pre>
     </MessageContainer>
@@ -144,17 +129,14 @@ interface ToolMessageComponentProps {
 
 export function ToolMessageComponent({ message }: ToolMessageComponentProps) {
   return (
-    <MessageContainer
-      alignment="left"
-      colorScheme="bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-100"
-    >
-      <div className="text-xs font-semibold mb-2 opacity-90 text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-        <div className="w-4 h-4 bg-emerald-500 dark:bg-emerald-600 rounded-full flex items-center justify-center text-white text-xs">
-          🔧
-        </div>
-        {message.content}
+    <div className="builder-enter mb-3 flex">
+      <div className="flex max-w-full items-center gap-2 rounded-full bg-[var(--chat-assistant-bg)] py-1.5 pr-3 pl-3 text-xs text-[var(--text-secondary)]">
+        <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-[var(--success)] motion-reduce:animate-none" />
+        <span className="truncate font-medium text-[var(--text-primary)]">
+          {message.content}
+        </span>
       </div>
-    </MessageContainer>
+    </div>
   );
 }
 
@@ -286,12 +268,12 @@ export function ThinkingMessageComponent({
       label="Claude's Reasoning"
       details={message.content}
       badge="thinking"
-      icon={<span className="bg-purple-400 dark:bg-purple-500">💭</span>}
+      icon={<span className="bg-[var(--surface-hover)]">…</span>}
       colorScheme={{
-        header: "text-purple-700 dark:text-purple-300",
-        content: "text-purple-600 dark:text-purple-400 italic",
-        border: "border-purple-200 dark:border-purple-700",
-        bg: "bg-purple-50/60 dark:bg-purple-900/15 border border-purple-200 dark:border-purple-800",
+        header: "text-[var(--text-secondary)]",
+        content: "text-[var(--text-tertiary)] italic",
+        border: "border-[var(--border-subtle)]",
+        bg: "bg-[var(--chat-assistant-bg)]",
       }}
       defaultExpanded={true}
     />
@@ -384,17 +366,9 @@ export function TodoMessageComponent({ message }: TodoMessageComponentProps) {
 
 export function LoadingComponent() {
   return (
-    <MessageContainer
-      alignment="left"
-      colorScheme="bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100"
-    >
-      <div className="text-xs font-semibold mb-2 opacity-90 text-slate-600 dark:text-slate-400">
-        Claude
-      </div>
-      <div className="flex items-center gap-2 text-sm">
-        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-        <span className="animate-pulse">Thinking...</span>
-      </div>
-    </MessageContainer>
+    <div className="builder-enter mb-8 flex items-center gap-2 text-xs">
+      <span className="size-3.5 animate-spin rounded-full border-2 border-[var(--border-strong)] border-t-[var(--text-primary)] motion-reduce:animate-none" />
+      <span className="thinking-shimmer">Claude is thinking…</span>
+    </div>
   );
 }

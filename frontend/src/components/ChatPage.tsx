@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { SparklesIcon } from "@heroicons/react/24/outline";
 import type {
   ChatRequest,
   ChatMessage,
@@ -793,192 +794,158 @@ export function ChatPage() {
   }, [isLoading, currentRequestId, handleAbort]);
 
   const tasks = selectTasks(taskProjection);
-  const hasTasks = tasks.length > 0;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
-      <div className="mx-auto flex h-screen max-w-[110rem] flex-col p-3 sm:p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4 sm:mb-8 flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <div>
-              <nav aria-label="Breadcrumb">
-                <div className="flex items-center">
-                  <button
-                    onClick={handleBackToProjects}
-                    className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded-md px-1 -mx-1"
-                    aria-label="Back to project selection"
-                  >
-                    Claude Code Web UI
-                  </button>
-                  {sessionId && (
-                    <>
-                      <span
-                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight mx-3 select-none"
-                        aria-hidden="true"
-                      >
-                        {" "}
-                        ›{" "}
-                      </span>
-                      <h1
-                        className="text-slate-800 dark:text-slate-100 text-lg sm:text-3xl font-bold tracking-tight"
-                        aria-current="page"
-                      >
-                        Conversation
-                      </h1>
-                    </>
-                  )}
-                </div>
-              </nav>
-              {workingDirectory && (
-                <div className="flex items-center text-sm font-mono mt-1">
-                  <button
-                    onClick={handleBackToProjectChat}
-                    className="text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 rounded px-1 -mx-1 cursor-pointer"
-                    aria-label={`Return to new chat in ${workingDirectory}`}
-                  >
-                    {workingDirectory}
-                  </button>
-                  {sessionId && (
-                    <span className="ml-2 text-xs text-slate-600 dark:text-slate-400">
-                      Session: {sessionId.substring(0, 8)}...
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="xl:hidden">
-              <HistoryButton
-                onClick={handleConversationListClick}
-                expanded={isConversationListOpen}
-              />
-            </div>
-            <SettingsButton onClick={handleSettingsClick} />
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="relative flex min-h-0 flex-1 gap-5">
-          {isConversationListOpen && (
-            <button
-              type="button"
-              className="fixed inset-0 z-40 bg-slate-950/45 xl:hidden"
-              onClick={() => setIsConversationListOpen(false)}
-              aria-label="Close conversation list"
-            />
-          )}
-          <aside
-            id="conversation-list"
-            className={`z-50 w-[min(22rem,calc(100vw-2rem))] shrink-0 ${
-              isConversationListOpen
-                ? "fixed inset-y-3 left-3 sm:inset-y-6 sm:left-6"
-                : "hidden"
-            } xl:static xl:block xl:w-72`}
+    <div className="flex h-dvh min-h-[36rem] flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)]">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface-panel)] px-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            onClick={handleBackToProjects}
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent-strong)] transition-[background-color,transform] hover:bg-[var(--accent)]/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] active:scale-95"
+            aria-label="Back to project selection"
           >
-            <HistoryView
-              workingDirectory={workingDirectory}
-              currentSessionId={currentSessionId}
-              disabled={isLoading}
-              refreshToken={conversationListVersion}
-              onSelect={handleConversationSelect}
-              onNew={handleNewConversation}
-              onClose={() => setIsConversationListOpen(false)}
-            />
-          </aside>
-
-          <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {historyLoading ? (
-              /* Loading conversation history */
-              <div className="flex flex-1 items-center justify-center">
-                <div className="text-center">
-                  <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"></div>
-                  <p className="text-slate-600 dark:text-slate-400">
-                    Loading conversation history...
-                  </p>
-                </div>
-              </div>
-            ) : historyError ? (
-              /* Error loading conversation history */
-              <div className="flex flex-1 items-center justify-center">
-                <div className="max-w-md text-center">
-                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20">
-                    <svg
-                      className="h-8 w-8 text-red-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                  </div>
-                  <h2 className="mb-2 text-xl font-semibold text-slate-800 dark:text-slate-100">
-                    Error Loading Conversation
-                  </h2>
-                  <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
-                    {historyError}
-                  </p>
-                  <button
-                    onClick={handleNewConversation}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
-                  >
-                    Start New Conversation
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div
-                className={`flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:gap-5 ${
-                  hasTasks
-                    ? "lg:grid-cols-[18rem_minmax(0,1fr)]"
-                    : "lg:grid-cols-1"
-                }`}
+            <SparklesIcon className="size-4.5" />
+          </button>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                onClick={handleBackToProjects}
+                className="truncate text-sm font-semibold hover:text-[var(--accent-strong)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
               >
-                <TaskSidebar tasks={tasks} />
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                  {/* Chat Messages */}
-                  <ChatMessages messages={messages} isLoading={isLoading} />
-
-                  {/* Input */}
-                  <ChatInput
-                    input={input}
-                    isLoading={isLoading}
-                    currentRequestId={currentRequestId}
-                    onInputChange={setInput}
-                    onSubmit={() => sendMessage()}
-                    onAbort={handleAbort}
-                    permissionMode={permissionMode}
-                    onPermissionModeChange={setPermissionMode}
-                    showPermissions={isPermissionMode}
-                    permissionData={permissionData}
-                    planPermissionData={planPermissionData}
-                    askUserQuestionData={
-                      askUserQuestion
-                        ? {
-                            questions: askUserQuestion.questions,
-                            onSubmit: (answers) =>
-                              respondToQuestion({ answers }),
-                            onCancel: () =>
-                              respondToQuestion({ cancelled: true }),
-                          }
-                        : undefined
-                    }
-                  />
-                </div>
-              </div>
+                Claude Code Web UI
+              </button>
+              <span className="hidden rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent-strong)] sm:inline-flex">
+                Builder
+              </span>
+            </div>
+            {workingDirectory && (
+              <button
+                onClick={handleBackToProjectChat}
+                className="block max-w-[55vw] truncate font-mono text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] sm:max-w-[65vw]"
+                aria-label={`Return to new chat in ${workingDirectory}`}
+                title={workingDirectory}
+              >
+                {workingDirectory}
+                {sessionId ? ` · ${sessionId.substring(0, 8)}` : ""}
+              </button>
             )}
-          </main>
+          </div>
         </div>
+        <div className="flex items-center gap-2">
+          <div className="xl:hidden">
+            <HistoryButton
+              onClick={handleConversationListClick}
+              expanded={isConversationListOpen}
+            />
+          </div>
+          <SettingsButton onClick={handleSettingsClick} />
+        </div>
+      </header>
 
-        {/* Settings Modal */}
-        <SettingsModal isOpen={isSettingsOpen} onClose={handleSettingsClose} />
+      <div className="relative flex min-h-0 flex-1 gap-3 p-2 sm:p-3">
+        {isConversationListOpen && (
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/35 xl:hidden"
+            onClick={() => setIsConversationListOpen(false)}
+            aria-label="Close conversation list"
+          />
+        )}
+        <aside
+          id="conversation-list"
+          className={`z-50 w-[min(22rem,calc(100vw-1rem))] shrink-0 ${
+            isConversationListOpen
+              ? "fixed inset-y-2 left-2 sm:inset-y-3 sm:left-3"
+              : "hidden"
+          } xl:static xl:block xl:w-72`}
+        >
+          <HistoryView
+            workingDirectory={workingDirectory}
+            currentSessionId={currentSessionId}
+            disabled={isLoading}
+            refreshToken={conversationListVersion}
+            onSelect={handleConversationSelect}
+            onNew={handleNewConversation}
+            onClose={() => setIsConversationListOpen(false)}
+          />
+        </aside>
+
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-[var(--surface-panel)] shadow-[0_2px_12px_rgba(15,23,42,0.06)] ring-1 ring-[var(--border-subtle)]">
+          {historyLoading ? (
+            <div className="flex flex-1 items-center justify-center">
+              <div className="text-center text-sm text-[var(--text-secondary)]">
+                <div className="mx-auto mb-3 size-5 animate-spin rounded-full border-2 border-[var(--border-strong)] border-t-[var(--text-primary)] motion-reduce:animate-none" />
+                <p className="thinking-shimmer">
+                  Loading conversation history...
+                </p>
+              </div>
+            </div>
+          ) : historyError ? (
+            <div className="flex flex-1 items-center justify-center">
+              <div className="max-w-md px-6 text-center">
+                <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-red-50 dark:bg-red-950/40">
+                  <svg
+                    className="size-6 text-[var(--danger)]"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
+                <h2 className="mb-2 text-lg font-semibold">
+                  Error Loading Conversation
+                </h2>
+                <p className="mb-4 text-sm text-[var(--text-secondary)]">
+                  {historyError}
+                </p>
+                <button
+                  onClick={handleNewConversation}
+                  className="rounded-full bg-[var(--text-primary)] px-4 py-2 text-sm font-medium text-[var(--surface-panel)] transition-opacity hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                >
+                  Start New Conversation
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <ChatMessages messages={messages} isLoading={isLoading} />
+              <ChatInput
+                input={input}
+                isLoading={isLoading}
+                currentRequestId={currentRequestId}
+                onInputChange={setInput}
+                onSubmit={() => sendMessage()}
+                onAbort={handleAbort}
+                permissionMode={permissionMode}
+                onPermissionModeChange={setPermissionMode}
+                showPermissions={isPermissionMode}
+                permissionData={permissionData}
+                planPermissionData={planPermissionData}
+                askUserQuestionData={
+                  askUserQuestion
+                    ? {
+                        questions: askUserQuestion.questions,
+                        onSubmit: (answers) => respondToQuestion({ answers }),
+                        onCancel: () => respondToQuestion({ cancelled: true }),
+                      }
+                    : undefined
+                }
+              />
+            </>
+          )}
+        </main>
+        {!historyLoading && !historyError && (
+          <TaskSidebar tasks={tasks} isLoading={isLoading} />
+        )}
       </div>
+
+      <SettingsModal isOpen={isSettingsOpen} onClose={handleSettingsClose} />
     </div>
   );
 }

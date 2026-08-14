@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import { StopIcon } from "@heroicons/react/24/solid";
+import { ArrowUpIcon } from "@heroicons/react/24/outline";
 import { UI_CONSTANTS, KEYBOARD_SHORTCUTS } from "../../utils/constants";
 import { useEnterBehavior } from "../../hooks/useSettings";
 import { PermissionInputPanel } from "./PermissionInputPanel";
@@ -165,18 +166,6 @@ export function ChatInput({
     setTimeout(() => setIsComposing(false), 0);
   };
 
-  // Get permission mode status indicator (CLI-style)
-  const getPermissionModeIndicator = (mode: PermissionMode): string => {
-    switch (mode) {
-      case "default":
-        return "🔧 normal mode";
-      case "plan":
-        return "⏸ plan mode";
-      case "acceptEdits":
-        return "⏵⏵ accept edits";
-    }
-  };
-
   // Get clean permission mode name (without emoji)
   const getPermissionModeName = (mode: PermissionMode): string => {
     switch (mode) {
@@ -197,44 +186,61 @@ export function ChatInput({
   };
 
   if (askUserQuestionData) {
-    return <AskUserQuestionPanel {...askUserQuestionData} />;
+    return (
+      <div className="shrink-0 px-4 pb-3 sm:px-6">
+        <div className="mx-auto w-full max-w-[800px]">
+          <AskUserQuestionPanel {...askUserQuestionData} />
+        </div>
+      </div>
+    );
   }
 
   // If we're in plan permission mode, show the plan permission panel instead
   if (showPermissions && planPermissionData) {
     return (
-      <PlanPermissionInputPanel
-        onAcceptWithEdits={planPermissionData.onAcceptWithEdits}
-        onAcceptDefault={planPermissionData.onAcceptDefault}
-        onKeepPlanning={planPermissionData.onKeepPlanning}
-        getButtonClassName={planPermissionData.getButtonClassName}
-        onSelectionChange={planPermissionData.onSelectionChange}
-        externalSelectedOption={planPermissionData.externalSelectedOption}
-      />
+      <div className="shrink-0 px-4 pb-3 sm:px-6">
+        <div className="mx-auto w-full max-w-[800px]">
+          <PlanPermissionInputPanel
+            onAcceptWithEdits={planPermissionData.onAcceptWithEdits}
+            onAcceptDefault={planPermissionData.onAcceptDefault}
+            onKeepPlanning={planPermissionData.onKeepPlanning}
+            getButtonClassName={planPermissionData.getButtonClassName}
+            onSelectionChange={planPermissionData.onSelectionChange}
+            externalSelectedOption={planPermissionData.externalSelectedOption}
+          />
+        </div>
+      </div>
     );
   }
 
   // If we're in regular permission mode, show the permission panel instead
   if (showPermissions && permissionData) {
     return (
-      <PermissionInputPanel
-        patterns={permissionData.patterns}
-        title={permissionData.title}
-        description={permissionData.description}
-        canRemember={permissionData.canRemember}
-        onAllow={permissionData.onAllow}
-        onAllowPermanent={permissionData.onAllowPermanent}
-        onDeny={permissionData.onDeny}
-        getButtonClassName={permissionData.getButtonClassName}
-        onSelectionChange={permissionData.onSelectionChange}
-        externalSelectedOption={permissionData.externalSelectedOption}
-      />
+      <div className="shrink-0 px-4 pb-3 sm:px-6">
+        <div className="mx-auto w-full max-w-[800px]">
+          <PermissionInputPanel
+            patterns={permissionData.patterns}
+            title={permissionData.title}
+            description={permissionData.description}
+            canRemember={permissionData.canRemember}
+            onAllow={permissionData.onAllow}
+            onAllowPermanent={permissionData.onAllowPermanent}
+            onDeny={permissionData.onDeny}
+            getButtonClassName={permissionData.getButtonClassName}
+            onSelectionChange={permissionData.onSelectionChange}
+            externalSelectedOption={permissionData.externalSelectedOption}
+          />
+        </div>
+      </div>
     );
   }
 
   return (
-    <div className="flex-shrink-0">
-      <form onSubmit={handleSubmit} className="relative">
+    <div className="shrink-0 px-4 pt-2 pb-3 sm:px-6">
+      <form
+        onSubmit={handleSubmit}
+        className="mx-auto w-full max-w-[800px] rounded-[24px] bg-[var(--surface-panel)] px-3 pt-1.5 pb-3 shadow-[0_3px_16px_rgba(15,23,42,0.06)] ring-1 ring-[var(--border-subtle)] transition-shadow focus-within:shadow-[0_6px_24px_rgba(15,23,42,0.09)]"
+      >
         <textarea
           ref={inputRef}
           value={input}
@@ -243,47 +249,52 @@ export function ChatInput({
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
           placeholder={
-            isLoading && currentRequestId ? "Processing..." : "Type message..."
+            isLoading && currentRequestId
+              ? "Claude is working…"
+              : "Type message..."
           }
           rows={1}
-          className={`w-full px-4 py-3 pr-20 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm shadow-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 resize-none overflow-hidden min-h-[48px] max-h-[${UI_CONSTANTS.TEXTAREA_MAX_HEIGHT}px]`}
+          style={{ maxHeight: UI_CONSTANTS.TEXTAREA_MAX_HEIGHT }}
+          className="min-h-14 w-full resize-none overflow-y-auto border-0 bg-transparent px-4 py-3 text-base leading-6 text-[var(--text-primary)] outline-none placeholder:text-[13px] placeholder:text-[var(--text-tertiary)] disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
           disabled={isLoading}
         />
-        <div className="absolute right-2 bottom-3 flex gap-2">
+        <div className="flex items-center justify-between px-0.5">
+          <button
+            type="button"
+            onClick={() =>
+              onPermissionModeChange(getNextPermissionMode(permissionMode))
+            }
+            className="rounded-full px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+            title={`Current: ${getPermissionModeName(permissionMode)} · Ctrl+Shift+M`}
+          >
+            {getPermissionModeName(permissionMode)}
+          </button>
           {isLoading && currentRequestId && (
             <button
               type="button"
               onClick={onAbort}
-              className="p-2 bg-red-100 hover:bg-red-200 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md"
+              className="flex size-8 items-center justify-center rounded-full bg-[var(--text-primary)] text-[var(--surface-panel)] transition-[opacity,transform] hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] active:scale-95"
               title="Stop (ESC)"
+              aria-label="Stop"
             >
-              <StopIcon className="w-4 h-4" />
+              <StopIcon className="size-3.5" />
             </button>
           )}
-          <button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white rounded-lg font-medium transition-all duration-200 shadow-sm hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 text-sm"
-          >
-            {isLoading ? "..." : permissionMode === "plan" ? "Plan" : "Send"}
-          </button>
+          {!isLoading && (
+            <button
+              type="submit"
+              aria-label={permissionMode === "plan" ? "Plan" : "Send"}
+              disabled={!input.trim()}
+              className="flex size-8 items-center justify-center rounded-full bg-[var(--text-primary)] text-[var(--surface-panel)] transition-[opacity,transform] hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--surface-hover)] disabled:text-[var(--text-tertiary)] disabled:opacity-100"
+            >
+              <ArrowUpIcon className="size-4" strokeWidth={2.5} />
+              <span className="sr-only">
+                {permissionMode === "plan" ? "Plan" : "Send"}
+              </span>
+            </button>
+          )}
         </div>
       </form>
-
-      {/* Permission mode status bar */}
-      <button
-        type="button"
-        onClick={() =>
-          onPermissionModeChange(getNextPermissionMode(permissionMode))
-        }
-        className="w-full px-4 py-1 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-mono text-left transition-colors cursor-pointer"
-        title={`Current: ${getPermissionModeName(permissionMode)} - Click to cycle (Ctrl+Shift+M)`}
-      >
-        {getPermissionModeIndicator(permissionMode)}
-        <span className="ml-2 text-slate-400 dark:text-slate-500 text-[10px]">
-          - Click to cycle (Ctrl+Shift+M)
-        </span>
-      </button>
     </div>
   );
 }

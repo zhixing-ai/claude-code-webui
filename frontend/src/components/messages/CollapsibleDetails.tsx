@@ -65,11 +65,9 @@ export function CollapsibleDetails({
     showPreview && !isExpanded && hasDetails && contentPreview.hasMore;
 
   return (
-    <div
-      className={`mb-3 p-3 rounded-lg ${colorScheme.bg} border ${colorScheme.border}`}
-    >
+    <div className="builder-enter mb-3 w-fit max-w-full rounded-xl bg-[var(--chat-assistant-bg)] p-3 ring-1 ring-[var(--border-subtle)]/60">
       <div
-        className={`${colorScheme.header} text-xs font-medium mb-1 flex items-center gap-2 ${isCollapsible ? "cursor-pointer hover:opacity-80" : ""}`}
+        className={`${colorScheme.header} mb-1 flex items-center gap-2 text-xs font-medium ${isCollapsible ? "cursor-pointer transition-opacity hover:opacity-75" : ""}`}
         role={isCollapsible ? "button" : undefined}
         tabIndex={isCollapsible ? 0 : undefined}
         aria-expanded={isCollapsible ? isExpanded : undefined}

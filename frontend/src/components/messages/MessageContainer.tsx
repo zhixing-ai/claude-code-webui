@@ -19,9 +19,9 @@ export function MessageContainer({
         : "justify-start";
 
   return (
-    <div className={`mb-4 flex ${justifyClass}`}>
+    <div className={`builder-enter mb-8 flex ${justifyClass}`}>
       <div
-        className={`max-w-[85%] sm:max-w-[70%] rounded-lg px-4 py-3 ${colorScheme}`}
+        className={`max-w-[85%] rounded-2xl px-4 py-3 sm:max-w-[90%] ${colorScheme}`}
       >
         {children}
       </div>

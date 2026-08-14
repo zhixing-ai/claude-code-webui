@@ -92,8 +92,8 @@ export function ProjectSelector() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-slate-600 dark:text-slate-400">
+      <div className="flex min-h-screen items-center justify-center bg-[var(--bg-app)]">
+        <div className="thinking-shimmer text-sm text-[var(--text-secondary)]">
           Loading projects...
         </div>
       </div>
@@ -101,29 +101,34 @@ export function ProjectSelector() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
-      <div className="max-w-4xl mx-auto p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-slate-800 dark:text-slate-100 text-3xl font-bold tracking-tight">
-            Select a Project
-          </h1>
+    <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">
+      <div className="mx-auto max-w-4xl p-5 sm:p-8">
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <span className="mb-3 inline-flex rounded-full bg-[var(--accent-soft)] px-2.5 py-1 text-[11px] font-medium text-[var(--accent-strong)]">
+              AI Builder
+            </span>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              Select a Project
+            </h1>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
+              Open a workspace and continue building with Claude.
+            </p>
+          </div>
           <SettingsButton onClick={handleSettingsClick} />
         </div>
 
         <form
           onSubmit={handleCreateProject}
-          className="mb-10 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+          className="mb-10 rounded-2xl bg-[var(--surface-panel)] p-5 shadow-[0_2px_12px_rgba(15,23,42,0.06)] ring-1 ring-[var(--border-subtle)]"
         >
           <div className="mb-4 flex items-start gap-3">
-            <div className="rounded-lg bg-blue-50 p-2 text-blue-600 dark:bg-blue-950 dark:text-blue-300">
+            <div className="rounded-xl bg-[var(--accent-soft)] p-2 text-[var(--accent-strong)]">
               <FolderPlusIcon className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
-              <h2 className="font-semibold text-slate-900 dark:text-slate-100">
-                Start a new project
-              </h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              <h2 className="font-semibold">Start a new project</h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
                 Enter a new directory or an existing folder. Relative paths are
                 created inside your home directory.
               </p>
@@ -132,7 +137,7 @@ export function ProjectSelector() {
 
           <label
             htmlFor="new-project-path"
-            className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300"
+            className="mb-2 block text-sm font-medium text-[var(--text-secondary)]"
           >
             Project directory
           </label>
@@ -144,21 +149,18 @@ export function ProjectSelector() {
               placeholder="~/my-project"
               autoComplete="off"
               disabled={creating}
-              className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+              className="min-w-0 flex-1 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-panel)] px-3 py-2.5 font-mono text-sm outline-none transition-[border-color,box-shadow] placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={!newProjectPath.trim() || creating}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full bg-[var(--text-primary)] px-5 py-2.5 text-sm font-medium text-[var(--surface-panel)] transition-[opacity,transform] hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {creating ? "Creating..." : "Create project"}
             </button>
           </div>
           {createError && (
-            <p
-              role="alert"
-              className="mt-3 text-sm text-red-600 dark:text-red-400"
-            >
+            <p role="alert" className="mt-3 text-sm text-[var(--danger)]">
               {createError}
             </p>
           )}
@@ -168,24 +170,25 @@ export function ProjectSelector() {
           {error && (
             <p
               role="alert"
-              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+              className="rounded-xl bg-red-50 p-3 text-sm text-[var(--danger)] ring-1 ring-red-200 dark:bg-red-950/30 dark:ring-red-900"
             >
               Failed to load existing projects: {error}
             </p>
           )}
           {projects.length > 0 && (
             <>
-              <h2 className="text-slate-700 dark:text-slate-300 text-lg font-medium mb-4">
+              <h2 className="mb-4 text-sm font-semibold text-[var(--text-secondary)]">
                 Recent Projects
               </h2>
               {projects.map((project) => (
                 <button
                   key={project.path}
                   onClick={() => handleProjectSelect(project.path)}
-                  className="w-full flex items-center gap-3 p-4 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors text-left"
+                  data-testid="project-card"
+                  className="flex w-full items-center gap-3 rounded-xl bg-[var(--surface-panel)] p-4 text-left ring-1 ring-[var(--border-subtle)] transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-[var(--surface-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] motion-reduce:transform-none"
                 >
-                  <FolderIcon className="h-5 w-5 text-slate-500 dark:text-slate-400 flex-shrink-0" />
-                  <span className="text-slate-800 dark:text-slate-200 font-mono text-sm">
+                  <FolderIcon className="h-5 w-5 flex-shrink-0 text-[var(--accent-strong)]" />
+                  <span className="font-mono text-sm text-[var(--text-primary)]">
                     {project.path}
                   </span>
                 </button>
@@ -193,7 +196,7 @@ export function ProjectSelector() {
             </>
           )}
           {!error && projects.length === 0 && (
-            <p className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+            <p className="rounded-xl border border-dashed border-[var(--border-strong)] p-6 text-center text-sm text-[var(--text-tertiary)]">
               No projects yet. Create one above to start working.
             </p>
           )}

@@ -8,10 +8,10 @@ export function SettingsButton({ onClick }: SettingsButtonProps) {
   return (
     <button
       onClick={onClick}
-      className="p-3 rounded-xl bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-all duration-200 backdrop-blur-sm shadow-sm hover:shadow-md"
+      className="rounded-xl p-2.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
       aria-label="Open settings"
     >
-      <CogIcon className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+      <CogIcon className="size-5" />
     </button>
   );
 }

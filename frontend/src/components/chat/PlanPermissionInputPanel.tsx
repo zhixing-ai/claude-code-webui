@@ -102,10 +102,10 @@ export function PlanPermissionInputPanel({
   ]);
 
   return (
-    <div className="flex-shrink-0 px-4 py-4 bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl backdrop-blur-sm shadow-sm">
+    <div className="builder-enter flex-shrink-0 rounded-xl bg-[var(--surface-panel)] px-4 py-4 ring-1 ring-[var(--border-subtle)]">
       {/* Content */}
       <div className="mb-4">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-[var(--text-tertiary)]">
           Choose how to proceed (Press ESC to keep planning)
         </p>
       </div>
@@ -131,18 +131,18 @@ export function PlanPermissionInputPanel({
           }}
           className={getButtonClassName(
             "acceptWithEdits",
-            `w-full p-3 rounded-lg cursor-pointer transition-all duration-200 text-left focus:outline-none ${
+            `w-full p-3 rounded-lg cursor-pointer transition-[background-color,box-shadow] duration-200 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
               effectiveSelectedOption === "acceptWithEdits"
-                ? "bg-green-50 dark:bg-green-900/20 border-2 border-green-500 dark:border-green-400 shadow-sm"
-                : "border-2 border-transparent"
+                ? "bg-[var(--success-soft)] ring-1 ring-[var(--success)]/40"
+                : "hover:bg-[var(--surface-hover)] ring-1 ring-transparent"
             }`,
           )}
         >
           <span
             className={`text-sm font-medium ${
               effectiveSelectedOption === "acceptWithEdits"
-                ? "text-green-700 dark:text-green-300"
-                : "text-slate-700 dark:text-slate-300"
+                ? "text-[var(--success)]"
+                : "text-[var(--text-secondary)]"
             }`}
           >
             Yes, and auto-accept edits
@@ -168,18 +168,18 @@ export function PlanPermissionInputPanel({
           }}
           className={getButtonClassName(
             "acceptDefault",
-            `w-full p-3 rounded-lg cursor-pointer transition-all duration-200 text-left focus:outline-none ${
+            `w-full p-3 rounded-lg cursor-pointer transition-[background-color,box-shadow] duration-200 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
               effectiveSelectedOption === "acceptDefault"
-                ? "bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 shadow-sm"
-                : "border-2 border-transparent"
+                ? "bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]/40"
+                : "hover:bg-[var(--surface-hover)] ring-1 ring-transparent"
             }`,
           )}
         >
           <span
             className={`text-sm font-medium ${
               effectiveSelectedOption === "acceptDefault"
-                ? "text-blue-700 dark:text-blue-300"
-                : "text-slate-700 dark:text-slate-300"
+                ? "text-[var(--accent-strong)]"
+                : "text-[var(--text-secondary)]"
             }`}
           >
             Yes, and manually approve edits
@@ -205,18 +205,18 @@ export function PlanPermissionInputPanel({
           }}
           className={getButtonClassName(
             "keepPlanning",
-            `w-full p-3 rounded-lg cursor-pointer transition-all duration-200 text-left focus:outline-none ${
+            `w-full p-3 rounded-lg cursor-pointer transition-[background-color,box-shadow] duration-200 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
               effectiveSelectedOption === "keepPlanning"
-                ? "bg-slate-50 dark:bg-slate-800 border-2 border-slate-400 dark:border-slate-500 shadow-sm"
-                : "border-2 border-transparent"
+                ? "bg-[var(--surface-hover)] ring-1 ring-[var(--border-strong)]"
+                : "hover:bg-[var(--surface-hover)] ring-1 ring-transparent"
             }`,
           )}
         >
           <span
             className={`text-sm font-medium ${
               effectiveSelectedOption === "keepPlanning"
-                ? "text-slate-800 dark:text-slate-200"
-                : "text-slate-700 dark:text-slate-300"
+                ? "text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)]"
             }`}
           >
             No, keep planning
