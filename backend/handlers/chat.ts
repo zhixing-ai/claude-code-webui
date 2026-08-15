@@ -18,6 +18,13 @@ import type { RunStateStore, StoredRunEvent } from "../state/types.ts";
 import { MemoryRunStore } from "../state/memory.ts";
 import { logger } from "../utils/logger.ts";
 import { PendingInteractions } from "./interactions.ts";
+import { PLATFORM_AGENTS, projectAgentEvents } from "../agents.ts";
+import {
+  projectSimulationEvent,
+  readSimulationCommand,
+  simulationOutputFormat,
+  simulationSystemPrompt,
+} from "../simulation.ts";
 
 type Subscriber = {
   controller: ReadableStreamDefaultController<Uint8Array>;
@@ -239,25 +246,56 @@ export class ChatRunManager {
       request as unknown as Record<string, unknown>,
     );
 
+    const appendedSystemPrompt = [
+      request.systemPrompt,
+      request.simulation
+        ? simulationSystemPrompt(request.simulation)
+        : undefined,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("\n\n");
+
     const options: Options = {
       abortController,
       executable: "node",
       executableArgs: [],
       pathToClaudeCodeExecutable: this.cliPath,
       includePartialMessages: true,
+      forwardSubagentText: true,
+      agentProgressSummaries: true,
+      agents: PLATFORM_AGENTS,
+      ...(request.simulation
+        ? {
+            tools: [
+              "Task",
+              "Agent",
+              "StructuredOutput",
+              "Read",
+              "Glob",
+              "Grep",
+            ],
+            outputFormat: simulationOutputFormat(request.simulation),
+          }
+        : {}),
       ...(request.newSessionId ? { sessionId: request.newSessionId } : {}),
       ...(request.sessionId ? { resume: request.sessionId } : {}),
-      ...(request.allowedTools ? { allowedTools: request.allowedTools } : {}),
+      ...(request.simulation
+        ? {
+            allowedTools: ["Task", "Agent", "StructuredOutput"],
+          }
+        : request.allowedTools
+          ? { allowedTools: request.allowedTools }
+          : {}),
       ...(request.workingDirectory ? { cwd: request.workingDirectory } : {}),
       ...(request.additionalDirectories
         ? { additionalDirectories: request.additionalDirectories }
         : {}),
-      ...(request.systemPrompt
+      ...(appendedSystemPrompt
         ? {
             systemPrompt: {
               type: "preset" as const,
               preset: "claude_code" as const,
-              append: request.systemPrompt,
+              append: appendedSystemPrompt,
             },
           }
         : {}),
@@ -275,6 +313,15 @@ export class ChatRunManager {
         precomputeCompactionEnabled: true,
       },
       canUseTool: async (toolName, input, permissionOptions) => {
+        if (request.simulation && ["Read", "Glob", "Grep"].includes(toolName)) {
+          return permissionOptions.agentID
+            ? { behavior: "allow", updatedInput: input }
+            : {
+                behavior: "deny",
+                message:
+                  "Simulation file access is restricted to the delegated agent",
+              };
+        }
         if (toolName === "AskUserQuestion") {
           const questions = readQuestions(input);
           if (!questions) {
@@ -348,6 +395,15 @@ export class ChatRunManager {
         type: "claude_json",
         data: sdkMessage,
       });
+      for (const event of projectAgentEvents(sdkMessage)) {
+        this.emit(request.requestId, { type: "agent_event", event });
+      }
+      if (request.simulation) {
+        const event = projectSimulationEvent(request.simulation, sdkMessage);
+        if (event) {
+          this.emit(request.requestId, { type: "simulation_event", event });
+        }
+      }
     };
 
     const executeQuery = async (
@@ -547,7 +603,15 @@ function readChatRequest(value: unknown): ChatRequest | null {
   ) {
     return null;
   }
-  return value as unknown as ChatRequest;
+  const simulation =
+    value.simulation === undefined
+      ? undefined
+      : readSimulationCommand(value.simulation);
+  if (value.simulation !== undefined && !simulation) return null;
+  return {
+    ...(value as unknown as ChatRequest),
+    ...(simulation ? { simulation } : {}),
+  };
 }
 
 export async function handleChatRequest(

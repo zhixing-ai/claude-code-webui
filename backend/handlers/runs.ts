@@ -5,13 +5,18 @@ import type {
   CreateRunResponse,
 } from "../../shared/types.ts";
 import type { RunStateStore } from "../state/types.ts";
+import { readSimulationCommand } from "../simulation.ts";
 import { ChatRunManager, streamResponse } from "./chat.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function readCreateRunRequest(value: unknown): CreateRunRequest | null {
-  const request = value as { message?: unknown; systemPrompt?: unknown };
+  const request = value as {
+    message?: unknown;
+    systemPrompt?: unknown;
+    simulation?: unknown;
+  };
   if (
     typeof value !== "object" ||
     value === null ||
@@ -24,7 +29,15 @@ function readCreateRunRequest(value: unknown): CreateRunRequest | null {
   ) {
     return null;
   }
-  return value as CreateRunRequest;
+  const simulation =
+    request.simulation === undefined
+      ? undefined
+      : readSimulationCommand(request.simulation);
+  if (request.simulation !== undefined && !simulation) return null;
+  return {
+    ...(value as CreateRunRequest),
+    ...(simulation ? { simulation } : {}),
+  };
 }
 
 export async function handleCreateRunRequest(c: Context, runs: ChatRunManager) {

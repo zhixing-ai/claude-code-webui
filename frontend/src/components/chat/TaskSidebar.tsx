@@ -1,30 +1,54 @@
 import {
+  ChevronDownIcon,
   CheckIcon,
+  CpuChipIcon,
   InformationCircleIcon,
   LightBulbIcon,
 } from "@heroicons/react/24/outline";
+import { useState } from "react";
 import type { ClaudeTask } from "../../utils/taskProjection";
+import type { AgentRun } from "../../utils/agentProjection";
+import type { SimulationScenario } from "../../types";
+import { SimulationPanel, type SimulationPanelState } from "./SimulationPanel";
 
 interface TaskSidebarProps {
   tasks: ClaudeTask[];
+  agents: AgentRun[];
   isLoading: boolean;
+  simulation: SimulationPanelState;
+  onGenerateScenarios: () => void;
+  onRunScenario: (scenario: SimulationScenario) => void;
 }
 
-export function TaskSidebar({ tasks, isLoading }: TaskSidebarProps) {
+export function TaskSidebar({
+  tasks,
+  agents,
+  isLoading,
+  simulation,
+  onGenerateScenarios,
+  onRunScenario,
+}: TaskSidebarProps) {
+  const [view, setView] = useState<"tasks" | "agents" | "simulation">("tasks");
   const completed = tasks.filter((task) => task.status === "completed").length;
   const percent = tasks.length
     ? Math.round((completed / tasks.length) * 100)
     : 0;
   const current = tasks.find((task) => task.status === "in_progress");
+  const activeAgents = agents.filter((agent) =>
+    ["queued", "running", "waiting"].includes(agent.status),
+  ).length;
+  const completedAgents = agents.filter(
+    (agent) => agent.status === "completed",
+  ).length;
 
   return (
     <aside
-      aria-label="Claude task progress"
+      aria-label="Build control"
       className="hidden min-h-0 w-[320px] shrink-0 flex-col overflow-hidden rounded-2xl bg-[var(--surface-panel)] shadow-[0_2px_12px_rgba(15,23,42,0.08)] ring-1 ring-[var(--border-subtle)] lg:flex 2xl:w-[360px]"
     >
       <div className="shrink-0 border-b border-[var(--border-subtle)] px-5 pt-5 pb-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-[13px] font-semibold">Build progress</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-[13px] font-semibold">Build control</h2>
           {isLoading && tasks.length === 0 && (
             <span
               className="size-3.5 animate-spin rounded-full border-2 border-[var(--border-strong)] border-t-[var(--text-primary)] motion-reduce:animate-none"
@@ -32,7 +56,35 @@ export function TaskSidebar({ tasks, isLoading }: TaskSidebarProps) {
             />
           )}
         </div>
-        {tasks.length > 0 ? (
+        <div
+          className="mt-3 grid grid-cols-3 rounded-lg bg-[var(--surface-muted)] p-1"
+          aria-label="Build control view"
+        >
+          <SidebarTab
+            active={view === "tasks"}
+            label="流程"
+            count={tasks.length}
+            onClick={() => setView("tasks")}
+          />
+          <SidebarTab
+            active={view === "agents"}
+            label="Agents"
+            count={activeAgents || agents.length}
+            pulse={activeAgents > 0}
+            onClick={() => setView("agents")}
+          />
+          <SidebarTab
+            active={view === "simulation"}
+            label="模拟测试"
+            count={simulation.scenarios.length}
+            pulse={
+              simulation.status === "designing" ||
+              simulation.status === "running"
+            }
+            onClick={() => setView("simulation")}
+          />
+        </div>
+        {view === "tasks" && tasks.length > 0 ? (
           <>
             <p className="mt-3 flex items-baseline gap-1">
               <span className="text-2xl leading-none font-semibold tabular-nums">
@@ -47,25 +99,49 @@ export function TaskSidebar({ tasks, isLoading }: TaskSidebarProps) {
                 Current: {current.subject}
               </p>
             )}
+            <div
+              className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--surface-hover)]"
+              role="progressbar"
+              aria-label="Task completion"
+              aria-valuemin={0}
+              aria-valuemax={tasks.length || 1}
+              aria-valuenow={completed}
+            >
+              <div
+                className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300 motion-reduce:transition-none"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
           </>
+        ) : view === "agents" ? (
+          <div className="mt-3 flex items-baseline justify-between gap-3">
+            <p className="flex items-baseline gap-1">
+              <span className="text-2xl leading-none font-semibold tabular-nums">
+                {activeAgents}
+              </span>
+              <span className="text-sm text-[var(--text-tertiary)]">
+                active
+              </span>
+            </p>
+            <p className="text-[11px] text-[var(--text-tertiary)]">
+              {completedAgents} completed
+            </p>
+          </div>
+        ) : view === "simulation" ? (
+          <p className="mt-3 text-[11px] text-[var(--text-tertiary)]">
+            {simulation.status === "designing"
+              ? "场景设计 Agent 正在工作"
+              : simulation.status === "running"
+                ? "客户、销售与考官正在对打"
+                : simulation.scenarios.length
+                  ? `${simulation.scenarios.length} 个场景可测试`
+                  : "从业务资料生成测试场景"}
+          </p>
         ) : null}
-        <div
-          className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--surface-hover)]"
-          role="progressbar"
-          aria-label="Task completion"
-          aria-valuemin={0}
-          aria-valuemax={tasks.length || 1}
-          aria-valuenow={completed}
-        >
-          <div
-            className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300 motion-reduce:transition-none"
-            style={{ width: `${percent}%` }}
-          />
-        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        {tasks.length > 0 ? (
+        {view === "tasks" && tasks.length > 0 ? (
           <ol className="flex flex-col">
             {tasks.map((task, index) => (
               <TaskStep
@@ -75,13 +151,28 @@ export function TaskSidebar({ tasks, isLoading }: TaskSidebarProps) {
               />
             ))}
           </ol>
+        ) : view === "agents" && agents.length > 0 ? (
+          <ol className="space-y-2.5">
+            {agents.map((agent) => (
+              <AgentCard key={agent.id} agent={agent} />
+            ))}
+          </ol>
+        ) : view === "simulation" ? (
+          <SimulationPanel
+            state={simulation}
+            disabled={isLoading}
+            onGenerate={onGenerateScenarios}
+            onRun={onRunScenario}
+          />
         ) : isLoading ? (
           <TaskSkeleton />
         ) : (
           <div className="flex h-full flex-col items-center justify-center px-5 text-center">
             <InformationCircleIcon className="size-5 text-[var(--text-tertiary)]" />
             <p className="mt-2 text-xs leading-5 text-[var(--text-tertiary)]">
-              Claude&apos;s checklist will appear here when the build starts.
+              {view === "tasks"
+                ? "搭建流程会在工作开始后显示。"
+                : "Agent 注册或启动后会显示在这里。"}
             </p>
           </div>
         )}
@@ -90,11 +181,168 @@ export function TaskSidebar({ tasks, isLoading }: TaskSidebarProps) {
       <div className="shrink-0 px-4 pb-4">
         <div className="flex items-start gap-2 rounded-lg bg-[var(--accent-soft)]/70 p-3 text-[11px] leading-relaxed text-[var(--text-secondary)]">
           <LightBulbIcon className="mt-0.5 size-3.5 shrink-0 text-[var(--accent-strong)]" />
-          Tasks update automatically as Claude plans and works.
+          {view === "tasks"
+            ? "任务表示要做什么，状态会自动更新。"
+            : view === "agents"
+              ? "Agent 表示谁在执行；输入仅显示安全摘要。"
+              : "Case 表示要验证什么；角色上下文彼此隔离。"}
         </div>
       </div>
     </aside>
   );
+}
+
+function SidebarTab({
+  active,
+  label,
+  count,
+  pulse = false,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  count: number;
+  pulse?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-medium transition-[background-color,color] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] ${
+        active
+          ? "bg-[var(--surface-panel)] text-[var(--text-primary)] shadow-sm"
+          : "text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+      }`}
+    >
+      {pulse && (
+        <span className="size-1.5 animate-pulse rounded-full bg-[var(--success)] motion-reduce:animate-none" />
+      )}
+      {label}
+      {count > 0 && <span className="tabular-nums opacity-65">{count}</span>}
+    </button>
+  );
+}
+
+const AGENT_LABELS: Record<string, string> = {
+  "fde-scenario-designer": "场景设计",
+  "fde-l1-examiner": "L1 组卷",
+  "fde-customer-simulator": "终端用户",
+  "fde-business-agent": "业务 Agent",
+  "fde-evaluator": "考官",
+  "fde-document-auditor": "文档审计",
+};
+
+const STATUS_LABELS: Record<AgentRun["status"], string> = {
+  registered: "Ready",
+  queued: "Queued",
+  running: "Working",
+  waiting: "Waiting",
+  completed: "Completed",
+  failed: "Failed",
+  stopped: "Stopped",
+};
+
+function AgentCard({ agent }: { agent: AgentRun }) {
+  const expandable = Boolean(
+    agent.description ||
+      agent.summary ||
+      agent.lastTool ||
+      agent.usage ||
+      agent.outputProtected,
+  );
+  const title = AGENT_LABELS[agent.agentType] ?? agent.agentType;
+
+  return (
+    <li className="builder-enter">
+      <details
+        className={`group rounded-xl border px-3.5 py-3 ${agentBorder(agent.status)}`}
+      >
+        <summary
+          className={`flex list-none items-start gap-3 [&::-webkit-details-marker]:hidden ${
+            expandable ? "cursor-pointer" : "cursor-default"
+          }`}
+        >
+          <span className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-[var(--text-secondary)]">
+            <CpuChipIcon className="size-4" />
+            <span
+              className={`absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-[var(--surface-panel)] ${agentDot(agent.status)}`}
+            />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="truncate text-[12px] font-semibold">
+                {title}
+              </span>
+              <span className="text-[9px] font-medium tracking-wide text-[var(--text-tertiary)] uppercase">
+                {STATUS_LABELS[agent.status]}
+              </span>
+            </span>
+            <span className="mt-1 block truncate text-[10px] text-[var(--text-tertiary)]">
+              {agent.lastTool
+                ? `Using ${agent.lastTool}`
+                : agent.description || "Registered and available"}
+            </span>
+          </span>
+          {expandable && (
+            <ChevronDownIcon className="mt-1 size-3.5 shrink-0 text-[var(--text-tertiary)] transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+          )}
+        </summary>
+        {expandable && (
+          <div className="mt-3 border-t border-[var(--border-subtle)] pt-3 text-[10px] leading-relaxed text-[var(--text-secondary)]">
+            {agent.description && <p>{agent.description}</p>}
+            {agent.summary && (
+              <p className="mt-2 whitespace-pre-wrap text-[var(--text-primary)]">
+                {agent.summary}
+              </p>
+            )}
+            {agent.outputProtected && (
+              <p className="mt-2 rounded-md bg-[var(--surface-muted)] px-2.5 py-2 text-[var(--text-tertiary)]">
+                输出已按角色隔离，仅用于后续受控评测。
+              </p>
+            )}
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] text-[var(--text-tertiary)]">
+              {agent.lastTool && <span>tool: {agent.lastTool}</span>}
+              {agent.usage?.totalTokens !== undefined && (
+                <span>{agent.usage.totalTokens.toLocaleString()} tokens</span>
+              )}
+              {agent.usage?.toolUses !== undefined && (
+                <span>{agent.usage.toolUses} calls</span>
+              )}
+              {agent.usage?.durationMs !== undefined && (
+                <span>{formatDuration(agent.usage.durationMs)}</span>
+              )}
+            </div>
+          </div>
+        )}
+      </details>
+    </li>
+  );
+}
+
+function agentBorder(status: AgentRun["status"]): string {
+  if (status === "running") return "border-green-500/35 bg-green-500/[0.04]";
+  if (status === "failed") return "border-red-500/35 bg-red-500/[0.04]";
+  if (status === "waiting") return "border-amber-500/35 bg-amber-500/[0.04]";
+  return "border-[var(--border-subtle)] bg-[var(--surface-panel)]";
+}
+
+function agentDot(status: AgentRun["status"]): string {
+  if (status === "running")
+    return "animate-pulse bg-green-500 motion-reduce:animate-none";
+  if (status === "completed") return "bg-green-500";
+  if (status === "failed") return "bg-red-500";
+  if (status === "waiting") return "bg-amber-500";
+  if (status === "queued") return "bg-sky-500";
+  return "bg-[var(--border-strong)]";
+}
+
+function formatDuration(durationMs: number): string {
+  const seconds = Math.max(0, Math.round(durationMs / 1000));
+  return seconds < 60
+    ? `${seconds}s`
+    : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
 function TaskStep({ task, last }: { task: ClaudeTask; last: boolean }) {

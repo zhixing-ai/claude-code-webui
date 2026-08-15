@@ -9,6 +9,7 @@ import type {
   CreateRunRequest,
   CreateRunResponse,
 } from "../../shared/types.ts";
+import { readSimulationCommand } from "../simulation.ts";
 import { ChatRunManager } from "./chat.ts";
 
 export async function handleSessionsRequest(
@@ -62,11 +63,16 @@ export async function handleResumeSessionRequest(
   } catch {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
+  const simulation =
+    body.simulation === undefined
+      ? undefined
+      : readSimulationCommand(body.simulation);
   if (
     typeof body.message !== "string" ||
     !body.message.trim() ||
     (body.systemPrompt !== undefined &&
-      (typeof body.systemPrompt !== "string" || !body.systemPrompt.trim()))
+      (typeof body.systemPrompt !== "string" || !body.systemPrompt.trim())) ||
+    (body.simulation !== undefined && !simulation)
   ) {
     return c.json(
       { error: "Message and system prompt must be non-empty strings" },
@@ -76,6 +82,7 @@ export async function handleResumeSessionRequest(
 
   const request: ChatRequest = {
     ...body,
+    ...(simulation ? { simulation } : {}),
     requestId: body.requestId || crypto.randomUUID(),
     sessionId,
   };

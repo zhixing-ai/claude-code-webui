@@ -98,11 +98,20 @@ export function useStreamParser() {
           context.onAskUserQuestion?.(data);
         } else if (data.type === "tool_permission") {
           context.onToolPermission?.(data);
+        } else if (data.type === "agent_event") {
+          context.onAgentEvent?.(data.event);
+        } else if (data.type === "simulation_event") {
+          context.onSimulationEvent?.(data.event);
         } else if (data.type === "claude_json" && data.data) {
           // data.data is already an SDKMessage object, no need to parse
           const claudeData = data.data as SDKMessage;
           context.onSdkMessage?.(claudeData);
-          processClaudeData(claudeData, context);
+          if (
+            !("parent_tool_use_id" in claudeData) ||
+            !claudeData.parent_tool_use_id
+          ) {
+            processClaudeData(claudeData, context);
+          }
         } else if (data.type === "error") {
           const errorMessage: SystemMessage = {
             type: "error",

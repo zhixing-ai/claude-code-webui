@@ -31,6 +31,91 @@ export interface ToolPermissionStreamResponse {
   decisionReason?: string;
 }
 
+export type AgentRunStatus =
+  | "registered"
+  | "queued"
+  | "running"
+  | "waiting"
+  | "completed"
+  | "failed"
+  | "stopped";
+
+export interface AgentLifecycleEvent {
+  agentRunId: string;
+  agentType: string;
+  status: AgentRunStatus;
+  taskId?: string;
+  toolUseId?: string;
+  description?: string;
+  summary?: string;
+  lastTool?: string;
+  usage?: {
+    totalTokens?: number;
+    toolUses?: number;
+    durationMs?: number;
+  };
+}
+
+export interface AgentEventStreamResponse {
+  type: "agent_event";
+  event: AgentLifecycleEvent;
+}
+
+export interface SimulationCase {
+  id: string;
+  title: string;
+  customerGoal: string;
+  openingMessage: string;
+  expectedBehaviors: string[];
+  passCriteria: string[];
+}
+
+export interface SimulationScenario {
+  id: string;
+  title: string;
+  stage: string;
+  description: string;
+  persona: string;
+  objective: string;
+  cases: SimulationCase[];
+}
+
+export type SimulationCommand =
+  | { action: "design" }
+  | { action: "run"; scenario: SimulationScenario };
+
+export type SimulationVerdict = "passed" | "partial" | "failed";
+
+export interface SimulationTurn {
+  role: "customer" | "sales";
+  content: string;
+}
+
+export interface SimulationCaseResult {
+  caseId: string;
+  verdict: SimulationVerdict;
+  score: number;
+  transcript: SimulationTurn[];
+  evaluation: string;
+  strengths: string[];
+  issues: string[];
+}
+
+export interface SimulationRunResult {
+  scenarioId: string;
+  summary: string;
+  cases: SimulationCaseResult[];
+}
+
+export type SimulationLifecycleEvent =
+  | { kind: "scenarios_generated"; scenarios: SimulationScenario[] }
+  | { kind: "simulation_completed"; result: SimulationRunResult };
+
+export interface SimulationEventStreamResponse {
+  type: "simulation_event";
+  event: SimulationLifecycleEvent;
+}
+
 export type InteractionResponse =
   | { answers: Record<string, string> }
   | { cancelled: true }
@@ -43,6 +128,8 @@ export type InteractionResponse =
 
 export type StreamResponse =
   | { type: "claude_json"; data: unknown }
+  | AgentEventStreamResponse
+  | SimulationEventStreamResponse
   | AskUserQuestionStreamResponse
   | ToolPermissionStreamResponse
   | { type: "heartbeat"; runId: string }
@@ -65,6 +152,7 @@ export interface CreateRunRequest {
   additionalDirectories?: string[];
   systemPrompt?: string;
   permissionMode?: "default" | "plan" | "acceptEdits" | "bypassPermissions";
+  simulation?: SimulationCommand;
 }
 
 export interface CreateRunResponse {
@@ -81,6 +169,7 @@ export interface ChatRequest {
   additionalDirectories?: string[];
   systemPrompt?: string;
   permissionMode?: "default" | "plan" | "acceptEdits" | "bypassPermissions";
+  simulation?: SimulationCommand;
 }
 
 export interface AbortRequest {

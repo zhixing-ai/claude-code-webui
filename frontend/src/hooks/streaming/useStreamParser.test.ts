@@ -24,9 +24,23 @@ describe("useStreamParser", () => {
       onAskUserQuestion: vi.fn(),
       onToolPermission: vi.fn(),
       onSdkMessage: vi.fn(),
+      onSimulationEvent: vi.fn(),
     };
 
     vi.clearAllMocks();
+  });
+
+  it("routes structured simulation events to the control panel", () => {
+    const { result } = renderHook(() => useStreamParser());
+    const event = { kind: "scenarios_generated", scenarios: [] } as const;
+
+    result.current.processStreamLine(
+      JSON.stringify({ type: "simulation_event", event }),
+      mockContext,
+    );
+
+    expect(mockContext.onSimulationEvent).toHaveBeenCalledWith(event);
+    expect(mockContext.addMessage).not.toHaveBeenCalled();
   });
 
   describe("ExitPlanMode Detection and Plan Message Creation", () => {

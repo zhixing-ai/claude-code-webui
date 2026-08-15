@@ -10,6 +10,10 @@ import type {
   AskUserQuestionStreamResponse,
   ToolPermissionStreamResponse,
   InteractionResponse,
+  AgentLifecycleEvent,
+  SimulationCommand,
+  SimulationLifecycleEvent,
+  SimulationScenario,
 } from "../types";
 import { useClaudeStreaming } from "../hooks/useClaudeStreaming";
 import { useChatState } from "../hooks/chat/useChatState";
@@ -35,12 +39,19 @@ import { normalizeWindowsPath } from "../utils/pathUtils";
 import { extractToolInfo, generateToolPatterns } from "../utils/toolUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { TaskSidebar } from "./chat/TaskSidebar";
+import type { SimulationPanelState } from "./chat/SimulationPanel";
 import {
   createEmptyTaskProjection,
   reduceTaskMessage,
   replayTaskMessages,
   selectTasks,
 } from "../utils/taskProjection";
+import {
+  createEmptyAgentProjection,
+  reduceAgentEvent,
+  selectAgentRuns,
+  stopActiveAgents,
+} from "../utils/agentProjection";
 import {
   getStorageItem,
   removeStorageItem,
@@ -58,6 +69,11 @@ interface StoredRunResponse {
 interface RunStreamResult {
   sessionId: string | null;
   terminal: boolean;
+  simulationEventReceived: boolean;
+}
+
+function createEmptySimulationState(): SimulationPanelState {
+  return { status: "idle", scenarios: [], results: {} };
 }
 
 export function ChatPage() {
@@ -78,6 +94,10 @@ export function ChatPage() {
   const [taskProjection, setTaskProjection] = useState(
     createEmptyTaskProjection,
   );
+  const [agentProjection, setAgentProjection] = useState(
+    createEmptyAgentProjection,
+  );
+  const [simulation, setSimulation] = useState(createEmptySimulationState);
 
   // Extract and normalize working directory from URL
   const workingDirectory = (() => {
@@ -139,6 +159,34 @@ export function ChatPage() {
   const handleSdkMessage = useCallback((message: SDKMessage) => {
     setTaskProjection((current) => reduceTaskMessage(current, message));
   }, []);
+
+  const handleAgentEvent = useCallback((event: AgentLifecycleEvent) => {
+    setAgentProjection((current) => reduceAgentEvent(current, event));
+  }, []);
+
+  const handleSimulationEvent = useCallback(
+    (event: SimulationLifecycleEvent) => {
+      if (event.kind === "scenarios_generated") {
+        setSimulation({
+          status: "ready",
+          scenarios: event.scenarios,
+          results: {},
+        });
+        return;
+      }
+      setSimulation((current) => ({
+        ...current,
+        status: "ready",
+        activeScenarioId: undefined,
+        error: undefined,
+        results: {
+          ...current.results,
+          [event.result.scenarioId]: event.result,
+        },
+      }));
+    },
+    [],
+  );
 
   // Initialize chat state with loaded history
   const {
@@ -210,6 +258,7 @@ export function ChatPage() {
       runId: string,
       initialResponse: Response,
       initialSessionId: string | null,
+      simulationCommand?: SimulationCommand,
     ): Promise<RunStreamResult> => {
       let response = initialResponse;
       let resolvedSessionId = initialSessionId;
@@ -218,6 +267,7 @@ export function ChatPage() {
       let localHasShownInitMessage = hasShownInitMessage;
       let lastSequence = 0;
       let terminal = false;
+      let simulationEventReceived = false;
 
       const streamingContext: StreamingContext = {
         get currentAssistantMessage() {
@@ -248,6 +298,8 @@ export function ChatPage() {
         onAskUserQuestion: setAskUserQuestion,
         onToolPermission: handleToolPermission,
         onSdkMessage: handleSdkMessage,
+        onAgentEvent: handleAgentEvent,
+        onSimulationEvent: handleSimulationEvent,
       };
 
       const processLine = (line: string) => {
@@ -259,10 +311,30 @@ export function ChatPage() {
         if (typeof envelope.sequence === "number") {
           lastSequence = Math.max(lastSequence, envelope.sequence);
         }
+        simulationEventReceived ||= envelope.type === "simulation_event";
         terminal =
           envelope.type === "done" ||
           envelope.type === "error" ||
           envelope.type === "aborted";
+        if (envelope.type === "error" || envelope.type === "aborted") {
+          setAgentProjection((current) =>
+            stopActiveAgents(
+              current,
+              envelope.type === "error" ? "failed" : "stopped",
+            ),
+          );
+          if (simulationCommand) {
+            setSimulation((current) => ({
+              ...current,
+              status: "error",
+              activeScenarioId: undefined,
+              error:
+                envelope.type === "error"
+                  ? "模拟测试运行失败，请稍后重试。"
+                  : "模拟测试已停止。",
+            }));
+          }
+        }
         processStreamLine(line, streamingContext);
       };
 
@@ -282,12 +354,18 @@ export function ChatPage() {
         }
       }
 
-      return { sessionId: resolvedSessionId, terminal };
+      return {
+        sessionId: resolvedSessionId,
+        terminal,
+        simulationEventReceived,
+      };
     },
     [
       addMessage,
       currentAssistantMessage,
       handleSdkMessage,
+      handleAgentEvent,
+      handleSimulationEvent,
       handleToolPermission,
       hasShownInitMessage,
       processStreamLine,
@@ -305,6 +383,7 @@ export function ChatPage() {
       tools?: string[],
       hideUserMessage = false,
       overridePermissionMode?: PermissionMode,
+      simulationCommand?: SimulationCommand,
     ) => {
       const content = messageContent || input.trim();
       if (!content || isLoading) return;
@@ -340,6 +419,7 @@ export function ChatPage() {
             allowedTools: tools || allowedTools,
             ...(workingDirectory ? { workingDirectory } : {}),
             permissionMode: overridePermissionMode || permissionMode,
+            ...(simulationCommand ? { simulation: simulationCommand } : {}),
           } as ChatRequest),
         });
 
@@ -350,6 +430,7 @@ export function ChatPage() {
           requestId,
           response,
           currentSessionId,
+          simulationCommand,
         );
       } catch (error) {
         console.error("Failed to send message:", error);
@@ -359,6 +440,14 @@ export function ChatPage() {
           content: "Error: Failed to get response",
           timestamp: Date.now(),
         });
+        if (simulationCommand) {
+          setSimulation((current) => ({
+            ...current,
+            status: "error",
+            activeScenarioId: undefined,
+            error: "无法启动模拟测试，请检查服务后重试。",
+          }));
+        }
       } finally {
         setConversationListVersion((version) => version + 1);
         if (!runAccepted || streamResult?.terminal) {
@@ -374,6 +463,18 @@ export function ChatPage() {
         closePermissionRequest();
         closePlanModeRequest();
         resetRequestState();
+        if (
+          simulationCommand &&
+          streamResult?.terminal &&
+          !streamResult.simulationEventReceived
+        ) {
+          setSimulation((current) => ({
+            ...current,
+            status: "error",
+            activeScenarioId: undefined,
+            error: "Agent 已结束，但没有返回有效的结构化结果，请重试。",
+          }));
+        }
       }
     },
     [
@@ -394,6 +495,34 @@ export function ChatPage() {
       consumeRunResponse,
       navigate,
     ],
+  );
+
+  const handleGenerateScenarios = useCallback(() => {
+    if (isLoading) return;
+    setSimulation({ status: "designing", scenarios: [], results: {} });
+    void sendMessage("生成模拟测试场景", undefined, false, undefined, {
+      action: "design",
+    });
+  }, [isLoading, sendMessage]);
+
+  const handleRunScenario = useCallback(
+    (scenario: SimulationScenario) => {
+      if (isLoading) return;
+      setSimulation((current) => ({
+        ...current,
+        status: "running",
+        activeScenarioId: scenario.id,
+        error: undefined,
+      }));
+      void sendMessage(
+        `开始模拟：${scenario.title}`,
+        undefined,
+        false,
+        undefined,
+        { action: "run", scenario },
+      );
+    },
+    [isLoading, sendMessage],
   );
 
   useEffect(() => {
@@ -465,6 +594,17 @@ export function ChatPage() {
           ),
         ),
       );
+      setAgentProjection(createEmptyAgentProjection());
+      if (run.request.simulation?.action === "design") {
+        setSimulation({ status: "designing", scenarios: [], results: {} });
+      } else if (run.request.simulation?.action === "run") {
+        setSimulation({
+          status: "running",
+          scenarios: [run.request.simulation.scenario],
+          results: {},
+          activeScenarioId: run.request.simulation.scenario.id,
+        });
+      }
       setCurrentSessionId(run.sessionId || run.request.sessionId || null);
       setCurrentRequestId(run.id);
       setHasShownInitMessage(false);
@@ -482,7 +622,20 @@ export function ChatPage() {
           run.id,
           eventsResponse,
           run.sessionId || run.request.sessionId || null,
+          run.request.simulation,
         );
+        if (
+          run.request.simulation &&
+          result.terminal &&
+          !result.simulationEventReceived
+        ) {
+          setSimulation((current) => ({
+            ...current,
+            status: "error",
+            activeScenarioId: undefined,
+            error: "Agent 已结束，但没有返回有效的结构化结果，请重试。",
+          }));
+        }
         if (result.terminal) removeStorageItem(activeRunKey);
         if (!sessionId && result.sessionId) {
           const params = new URLSearchParams();
@@ -717,6 +870,8 @@ export function ChatPage() {
     setAskUserQuestion(null);
     setToolPermissions([]);
     setTaskProjection(createEmptyTaskProjection());
+    setAgentProjection(createEmptyAgentProjection());
+    setSimulation(createEmptySimulationState());
     closePermissionRequest();
     closePlanModeRequest();
     setIsConversationListOpen(false);
@@ -742,6 +897,8 @@ export function ChatPage() {
       }
       const params = new URLSearchParams();
       params.set("sessionId", nextSessionId);
+      setAgentProjection(createEmptyAgentProjection());
+      setSimulation(createEmptySimulationState());
       navigate({ search: params.toString() });
       setIsConversationListOpen(false);
     },
@@ -794,6 +951,7 @@ export function ChatPage() {
   }, [isLoading, currentRequestId, handleAbort]);
 
   const tasks = selectTasks(taskProjection);
+  const agents = selectAgentRuns(agentProjection);
 
   return (
     <div className="flex h-dvh min-h-[36rem] flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)]">
@@ -941,7 +1099,14 @@ export function ChatPage() {
           )}
         </main>
         {!historyLoading && !historyError && (
-          <TaskSidebar tasks={tasks} isLoading={isLoading} />
+          <TaskSidebar
+            tasks={tasks}
+            agents={agents}
+            isLoading={isLoading}
+            simulation={simulation}
+            onGenerateScenarios={handleGenerateScenarios}
+            onRunScenario={handleRunScenario}
+          />
         )}
       </div>
 

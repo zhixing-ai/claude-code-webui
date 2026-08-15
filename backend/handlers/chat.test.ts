@@ -1211,3 +1211,78 @@ describe("Chat Handler - Permission Mode Tests", () => {
     });
   });
 });
+
+describe("Chat Handler - Simulation workflow", () => {
+  it("adds the workflow prompt and emits structured simulation events", async () => {
+    vi.clearAllMocks();
+    const scenario = {
+      id: "negotiation",
+      title: "讨价还价",
+      stage: "成交",
+      description: "成交前争取权益",
+      persona: "关注总价的客户",
+      objective: "守住边界并推进成交",
+      cases: [
+        {
+          id: "discount",
+          title: "要求折扣",
+          customerGoal: "获得折扣",
+          openingMessage: "能优惠吗？",
+          expectedBehaviors: ["确认诉求"],
+          passCriteria: ["不越权"],
+        },
+      ],
+    };
+    mockQuery.mockReturnValue({
+      [Symbol.asyncIterator]: async function* () {
+        yield {
+          type: "result",
+          subtype: "success",
+          structured_output: { scenarios: [scenario] },
+          session_id: "simulation-session",
+        } as any;
+      },
+    } as any);
+    const context = {
+      req: {
+        json: vi.fn().mockResolvedValue({
+          message: "生成模拟测试场景",
+          requestId: "simulation-run",
+          simulation: { action: "design" },
+        }),
+      },
+      var: { config: { cliPath: "/path/to/claude-cli" } },
+    } as unknown as Context;
+
+    const response = await handleChatRequest(
+      context,
+      new Map<string, AbortController>(),
+      new PendingInteractions(),
+    );
+    const body = await new Response(response.body).text();
+
+    expect(mockQuery).toHaveBeenCalledWith({
+      prompt: "生成模拟测试场景",
+      options: expect.objectContaining({
+        tools: ["Task", "Agent", "StructuredOutput", "Read", "Glob", "Grep"],
+        allowedTools: ["Task", "Agent", "StructuredOutput"],
+        outputFormat: expect.objectContaining({ type: "json_schema" }),
+        systemPrompt: expect.objectContaining({
+          append: expect.stringContaining("fde-scenario-designer"),
+        }),
+      }),
+    });
+    expect(body).toContain('"type":"simulation_event"');
+    expect(body).toContain('"kind":"scenarios_generated"');
+    const options = mockQuery.mock.calls[0]?.[0].options;
+    if (!options) throw new Error("Expected query options");
+    await expect(
+      options.canUseTool?.("Read", { file_path: "merchant.md" }, {
+        agentID: "scenario-agent",
+      } as any),
+    ).resolves.toMatchObject({ behavior: "allow" });
+    await expect(
+      options.canUseTool?.("Read", { file_path: "merchant.md" }, {} as any),
+    ).resolves.toMatchObject({ behavior: "deny" });
+  });
+});

@@ -19,6 +19,10 @@ export interface StreamingContext {
   onAskUserQuestion?: (event: AskUserQuestionStreamResponse) => void;
   onToolPermission?: (event: ToolPermissionStreamResponse) => void;
   onSdkMessage?: (message: import("../../types").SDKMessage) => void;
+  onAgentEvent?: (event: import("../../types").AgentLifecycleEvent) => void;
+  onSimulationEvent?: (
+    event: import("../../types").SimulationLifecycleEvent,
+  ) => void;
 }
 
 /**
