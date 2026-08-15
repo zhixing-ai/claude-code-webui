@@ -1,0 +1,691 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - button "Back to project selection" [ref=e6]
+      - generic [ref=e9]:
+        - generic [ref=e10]:
+          - button "Claude Code Web UI" [ref=e11]
+          - generic [ref=e12]: Builder
+        - button "Return to new chat in /Users/shaobo/Workspace/zhixing/demo" [ref=e13]: /Users/shaobo/Workspace/zhixing/demo · 8fa6fcd0
+    - generic [ref=e14]:
+      - button "Toggle conversation list" [ref=e16]
+      - button "Open settings" [ref=e19]
+  - generic [ref=e22]:
+    - main [ref=e23]:
+      - generic [ref=e77]:
+        - generic [ref=e78]:
+          - heading "Build with Claude" [level=1] [ref=e79]
+          - generic [ref=e80]: Ready
+        - region "Builder conversation" [ref=e81]:
+          - generic [ref=e82]:
+            - generic [ref=e83]: hello
+            - generic [ref=e86]:
+              - generic [ref=e87]:
+                - generic [ref=e88]: …
+                - generic [ref=e90]: Claude's Reasoning
+                - generic [ref=e91]: (thinking)
+              - generic [ref=e92]: "The user just said \"hello\". The context is a Chinese project about being a sales AI assembly master (\"装配师傅\") for a merchant. The CLAUDE.md says I'm a sales AI assembly craftsman, and the merchant doesn't understand tech. The instruction says \"开工先按它的第 0 动作走\" — when starting work, follow the fde skill's step 0. But the user just said \"hello\" — this is a greeting. Should I invoke the fde skill? The skill triggers include \"帮我做一个销售 AI\" etc. A simple \"hello\" is conversational. But given the persona, I should respond in character as the assembly master, greeting the merchant and asking what they want to do — in plain language （说人话）, Chinese likely. I think the right move: greet warmly in Chinese, in persona, briefly explain what I can do （装配销售AI, 陪练场考试）, and ask what they'd like. Keep it short and human. No need to invoke the skill yet since no actual task was given."
+            - generic [ref=e93]: 你好，老板！我是你这儿的装配师傅 👋 我干的是这个活儿：帮你**量身装一个替你接客、卖货的 AI**——将来挂在你自己微信上用的那种。它说话什么口气、哪些话能说哪些打死不能说、怎么招呼客人怎么催单，全按你的意思来装。 在我这儿你能干两件事： 1. **装配台**——咱一点点把你的 AI 装出来：你跟我说你家的生意、你的规矩、你看过的聊得好的聊天记录，我照着装。 2. **陪练场**——装得差不多了，咱就"考一考"它：我找人扮成各种客人去刁难它，你在旁边看，哪句说得不对你当场批注，我当场改，改完重考，直到你放心。 放心之后还有一道正式出厂检查，查完才真能挂你的微信接客——那一步有专门的流程，我不瞎打包票。 那咱今天从哪儿开始？你可以跟我说说： - 你家是做什么生意的？ - 还是你已经料带来了（聊天记录、产品介绍啥的），想直接开工？ 你说，我听着。
+            - generic [ref=e96]: 生成模拟测试场景
+            - generic [ref=e99]:
+              - generic [ref=e100]:
+                - generic [ref=e101]: …
+                - generic [ref=e103]: Claude's Reasoning
+                - generic [ref=e104]: (thinking)
+              - generic [ref=e105]: "The user says \"生成模拟测试场景\" (generate simulation test scenarios). This is the training ground scenario generation workflow. According to the system prompt in my role instructions: I must use the fde-suite:training-ground Skill for 陪练/模拟测试. The workflow says: the main Agent only does scheduling and structure organization, forbidden from using Bash, Read, Glob, Grep, Skill, or any non-Agent tools. Must synchronously call only fde-suite:fde-scenario-designer. Wait — but I haven't confirmed a merchant name yet. The role says \"未确认商家名时先问，不从其他目录推断\". Hmm. The workflow instruction says \"无需预先探查目录，把当前工作目录和'只读当前角色挂载的商家业务资料'的边界直接交给该子 Agent\". So I should pass the working directory to the scenario designer and let it read the mounted merchant materials. But if there's no merchant mounted... The scenario designer can check. Actually the instruction says don't pre-explore directories, just hand it over to the sub-agent. So I should call the Agent tool with subagent_type \"fde-suite:fde-scenario-designer\", synchronously (run_in_background: false), asking it to design 3-6 scenarios covering stages: 售前咨询、需求澄清、方案推荐、异议处理、讨价还价、成交收口、售后边界， each with 2-5 cases. The output format requires StructuredOutput with scenarios (3-8), each with cases (2-8... actually minItems 2, maxItems 8 per the schema; but instruction says 2-5 cases). Let me call the scenario designer agent synchronously, then assemble its output into StructuredOutput."
+            - generic [ref=e106]: 好，进训练场 🎯 我这就让场景设计师翻你家的业务资料，给你出一套陪练考题——覆盖从客人进门咨询到售后边界的全流程。稍等。
+            - generic [ref=e109]: Agent(设计商家模拟测试场景)
+            - button "✓ Agent (225 chars) ▶" [ref=e114] [cursor=pointer]:
+              - generic [ref=e115]: ✓
+              - generic [ref=e117]: Agent
+              - generic [ref=e118]: (225 chars)
+              - generic [ref=e119]: ▶
+            - generic [ref=e120]: "[Request interrupted by user for tool use]"
+            - generic [ref=e123]: Continue from where you left off.
+            - generic [ref=e126]: No response requested.
+            - generic [ref=e129]: 生成模拟测试场景
+            - generic [ref=e132]:
+              - generic [ref=e133]:
+                - generic [ref=e134]: …
+                - generic [ref=e136]: Claude's Reasoning
+                - generic [ref=e137]: (thinking)
+              - generic [ref=e138]: The user asked again to generate simulation test scenarios. Previously the Agent tool call was rejected. Now they say "生成模拟测试场景" again. I should try again — call the fde-scenario-designer agent synchronously as instructed.
+            - generic [ref=e139]: 好，训练场开工 🎯 我让场景设计师照你家的业务资料出一套陪练考题，稍等。
+            - generic [ref=e142]: Agent(设计商家模拟测试场景)
+            - button "✓ Agent (8849 chars) ▶" [ref=e147] [cursor=pointer]:
+              - generic [ref=e148]: ✓
+              - generic [ref=e150]: Agent
+              - generic [ref=e151]: (8849 chars)
+              - generic [ref=e152]: ▶
+            - generic [ref=e153]:
+              - generic [ref=e154]:
+                - generic [ref=e155]: …
+                - generic [ref=e157]: Claude's Reasoning
+                - generic [ref=e158]: (thinking)
+              - generic [ref=e159]: "The scenario designer returned 5 scenarios with cases. Now I need to do structure validation and field organization, then return via StructuredOutput. The output format requires scenarios (3-8), each with id, title, stage, description, persona, objective, cases (2-8 items... but instruction said 2-5; designer produced 3-4 per scenario, fine). Each case: id, title, customerGoal, openingMessage, expectedBehaviors (1-8), passCriteria (1-8). Let me map the designer's output into the structured format. 5 scenarios: 1. sc-01: 3 cases 2. sc-02: 3 cases 3. sc-03: 3 cases 4. sc-04: 4 cases 5. sc-05: 3 cases All within limits. Now call StructuredOutput with all content."
+            - generic [ref=e160]: 考题出好了——设计师翻遍了你家（高考英语）的业务资料，出了 **5 个场景、16 道具体考题**，从家长第一次开口一直考到最后约试听收口。我先把结构核验一遍，再给你端上来。
+            - generic [ref=e163]: StructuredOutput(1 arg)
+            - button "✓ StructuredOutput (Structured output provided successfully) ▶" [ref=e168] [cursor=pointer]:
+              - generic [ref=e169]: ✓
+              - generic [ref=e171]: StructuredOutput
+              - generic [ref=e172]: (Structured output provided successfully)
+              - generic [ref=e173]: ▶
+            - generic [ref=e174]: Continue from where you left off.
+            - generic [ref=e177]: No response requested.
+            - generic [ref=e180]: 开始模拟：摸情况、配班型
+            - generic [ref=e183]:
+              - generic [ref=e184]:
+                - generic [ref=e185]: …
+                - generic [ref=e187]: Claude's Reasoning
+                - generic [ref=e188]: (thinking)
+              - generic [ref=e189]: "The merchant wants to run the simulation for scenario sc-02 \"摸情况、配班型\". Per the workflow instructions at the top: run each case serially, with three fresh agents per case: fde-customer-simulator (persona, customerGoal, openingMessage only — no scoring rules), fde-business-agent (only customer words, no expectedBehaviors/passCriteria), fde-evaluator (case + plain dialogue, independent judgment). Cases run serially. Main agent only relays. Case sc-02-c1: - persona: 高三学生家长，孩子英语偏科，着急但理性，会追问细节，说话直接。 - customerGoal: 知道孩子这个情况适合报哪种班 - openingMessage: 我儿子高三了，英语就90来分，想冲一冲，你们报什么班合适？ Step 1: customer simulator — sync run. Give persona, goal, opening message. It outputs natural customer questions. But how does the dialogue proceed? The customer simulator presumably converses: I'll need to relay business agent's answers back to the customer simulator via SendMessage to continue the dialogue, then get next customer message, etc. The Agent tool note says use SendMessage with agent's ID/name to continue. So the flow: launch customer simulator with persona/goal/opening; it gives first message (likely the opening message or a natural version). Then launch business agent with customer words; get response; send response to customer simulator; get next customer message; send to business agent; loop until natural conclusion (customer goal achieved or a few turns, e.g., 4-6 turns). Then launch evaluator with the case (expectedBehaviors/passCriteria) and the pure transcript. Serial cases: c1 first, then c2, then c3 — each with fresh agents. Let me start Case 1 with the customer simulator."
+            - generic [ref=e190]: 好，开考「摸情况、配班型」🎯 三道题一道一道来，每道都是全新的客户、全新的被考 AI、全新的判卷官。先跑第一题：高三偏科，问报什么班。
+            - generic [ref=e193]: Agent(扮演客户：高三偏科问班型)
+            - button "✓ Agent (279 chars) ▶" [ref=e198] [cursor=pointer]:
+              - generic [ref=e199]: ✓
+              - generic [ref=e201]: Agent
+              - generic [ref=e202]: (279 chars)
+              - generic [ref=e203]: ▶
+            - generic [ref=e204]:
+              - generic [ref=e205]:
+                - generic [ref=e206]: …
+                - generic [ref=e208]: Claude's Reasoning
+                - generic [ref=e209]: (thinking)
+              - generic [ref=e210]: Customer said the opening line. Now launch the business agent with only the customer's words.
+            - generic [ref=e211]: 客户开口了。现在请被考 AI 作答：
+            - generic [ref=e214]: Agent(被考AI应答：高三偏科)
+            - button "✓ Agent (338 chars) ▶" [ref=e219] [cursor=pointer]:
+              - generic [ref=e220]: ✓
+              - generic [ref=e222]: Agent
+              - generic [ref=e223]: (338 chars)
+              - generic [ref=e224]: ▶
+            - generic [ref=e225]:
+              - generic [ref=e226]:
+                - generic [ref=e227]: …
+                - generic [ref=e229]: Claude's Reasoning
+                - generic [ref=e230]: (thinking)
+              - generic [ref=e231]: "Business agent replied asking which part the kid loses points on. Relay back to customer simulator via SendMessage. Wait — do I have a SendMessage tool? The tool list doesn't show SendMessage explicitly. The Agent tool description says \"Use SendMessage with the agent's ID or name to continue a previously spawned agent\". But there's no SendMessage function in my available functions. Hmm. The functions available: Agent, Glob, Grep, Read, StructuredOutput, deepwiki, context7, playwright tools. No SendMessage. The output says \"use SendMessage with to: 'a7136190ba3753bf7'... to continue this agent\". But I don't have SendMessage in my toolset. Maybe I can use the Agent tool with the same name to continue? Actually, spawning an Agent with the same `name` might resume it? The doc says \"Use SendMessage with the agent's ID or name to continue a previously spawned agent with its context intact; a new Agent call starts fresh.\" Without SendMessage available, perhaps invoking Agent with the same name continues it? Risky. Alternative: the customer simulator and business agent could be driven via new Agent calls carrying the transcript each time — but the instruction says \"每个 Case 必须使用全新的三名 Agent\" — meaning fresh agents per case, which we have. For multi-turn, without SendMessage, I could just include conversation history in each subsequent prompt to the same... no, new Agent calls start fresh with a different persona instance. Hmm, maybe SendMessage exists as a tool even though not listed? I can't call tools not in my schema. Let me try calling Agent with name \"customer-c1\" again — some implementations resume by name. The Agent tool description: \"Use SendMessage with the agent's ID or name to continue a previously spawned agent with its context intact; a new Agent call starts fresh.\" This implies Agent call always starts fresh. But maybe providing the same name conflicts. Given constraints, a pragmatic approach: continue the dialogue by launching new Agent calls of the same subagent_type, passing the transcript so far and the persona, asking for the next customer message. But that violates \"全新的三名 Agent\" per case? No — that requirement is about fresh agents per case (not reusing across cases). Multi-turn within a case needs continuation. Since SendMessage isn't in my toolset, I'll try Agent with the same name first — likely the harness will resume the existing named agent. Let me try that."
+            - generic [ref=e232]: Agent(客户继续追问)
+            - button "✓ Agent (402 chars) ▶" [ref=e237] [cursor=pointer]:
+              - generic [ref=e238]: ✓
+              - generic [ref=e240]: Agent
+              - generic [ref=e241]: (402 chars)
+              - generic [ref=e242]: ▶
+            - generic [ref=e243]:
+              - generic [ref=e244]:
+                - generic [ref=e245]: …
+                - generic [ref=e247]: Claude's Reasoning
+                - generic [ref=e248]: (thinking)
+              - generic [ref=e249]: Named agent resume seems to work (returns new agentId but continues the persona). Continue relaying to business agent.
+            - generic [ref=e250]: Agent(被考AI继续应答)
+            - button "✓ Agent (934 chars) ▶" [ref=e255] [cursor=pointer]:
+              - generic [ref=e256]: ✓
+              - generic [ref=e258]: Agent
+              - generic [ref=e259]: (934 chars)
+              - generic [ref=e260]: ▶
+            - generic [ref=e261]:
+              - generic [ref=e262]:
+                - generic [ref=e263]: …
+                - generic [ref=e265]: Claude's Reasoning
+                - generic [ref=e266]: (thinking)
+              - generic [ref=e267]: The business agent gave a reply plus an "动作申报" section (internal, not visible to customer). For the transcript, only the customer-visible part counts. Relay the visible reply to the customer simulator.
+            - generic [ref=e268]: Agent(客户继续回应)
+            - button "✓ Agent (339 chars) ▶" [ref=e273] [cursor=pointer]:
+              - generic [ref=e274]: ✓
+              - generic [ref=e276]: Agent
+              - generic [ref=e277]: (339 chars)
+              - generic [ref=e278]: ▶
+            - generic [ref=e279]: Agent(被考AI继续应答)
+            - button "✓ Agent (782 chars) ▶" [ref=e284] [cursor=pointer]:
+              - generic [ref=e285]: ✓
+              - generic [ref=e287]: Agent
+              - generic [ref=e288]: (782 chars)
+              - generic [ref=e289]: ▶
+            - generic [ref=e290]:
+              - generic [ref=e291]:
+                - generic [ref=e292]: …
+                - generic [ref=e294]: Claude's Reasoning
+                - generic [ref=e295]: (thinking)
+              - generic [ref=e296]: "Note: business agent asked \"他现在英语大概多少分？\" even though the parent already said 一模93 and 90来分 twice. That's a potential weakness for the evaluator to catch. Relay visible reply to customer."
+            - generic [ref=e297]: Agent(客户继续回应)
+            - button "✓ Agent (384 chars) ▶" [ref=e302] [cursor=pointer]:
+              - generic [ref=e303]: ✓
+              - generic [ref=e305]: Agent
+              - generic [ref=e306]: (384 chars)
+              - generic [ref=e307]: ▶
+            - generic [ref=e308]:
+              - generic [ref=e309]:
+                - generic [ref=e310]: …
+                - generic [ref=e312]: Claude's Reasoning
+                - generic [ref=e313]: (thinking)
+              - generic [ref=e314]: "The customer ended with [END]. Transcript for sc-02-c1 is complete. Now launch a fresh evaluator with the case + pure dialogue. Transcript (customer-visible turns): 1. customer: 我儿子高三了，英语就90来分，想冲一冲，你们报什么班合适？ 2. sales: 90来分不算差，想冲肯定有得冲 / 不过报哪种班合适，得先看孩子卡在哪，我不能不了解情况就瞎给你推 / 你先跟我说说，他英语主要是哪块丢分？词汇阅读这些，还是作文？ 3. customer: 他主要是阅读丢分...像他这种情况，你们那边一般是怎么给安排的？ 4. sales: 一模 93，大头就是阅读在拖分 / 具体怎么补我不跟你拍脑袋，这个得老师看了他的卷子才能定 / 这样，你带孩子来上一节试听，不要钱，让带这块的老师当面看看他的情况 / 看完怎么安排，当场跟你说清楚 5. customer: 试听听起来行。孩子平时住校，就周末能出来，你们试听一般安排在什么时候？一节多长时间？另外...上一对一还是小班？大概什么价位？ 6. sales: 行，孩子住校那就往周末约。/ 具体几点、一节多长时间，我核好了回你，不瞎定。/ 试听这节不要钱，先带他来听听看。/ 正课的价我也不瞎报，核准了一起回你。/ 一对一还是跟班，光凭阅读拖分我不敢直接拍，得看他现在多少分、想冲多少才定得准。/ 他现在英语大概多少分？ 7. customer: 分数我前面说过——一模93...那就这么着：你把具体时间、一节多长、正课价钱核好了发我，我先带他周末试听一节。试听不收钱，这可是你说的。行，等你消息。 Now evaluator with case expectations and pass criteria."
+            - generic [ref=e315]: 第一题聊完了。现在换全新的判卷官独立评分：
+            - generic [ref=e318]: Agent(判卷：高三偏科问班型)
+            - button "✓ Agent (1726 chars) ▶" [ref=e323] [cursor=pointer]:
+              - generic [ref=e324]: ✓
+              - generic [ref=e326]: Agent
+              - generic [ref=e327]: (1726 chars)
+              - generic [ref=e328]: ▶
+            - generic [ref=e329]:
+              - generic [ref=e330]:
+                - generic [ref=e331]: …
+                - generic [ref=e333]: Claude's Reasoning
+                - generic [ref=e334]: (thinking)
+              - generic [ref=e335]: "Case 1 done: passed, 82. Now Case 2 (sc-02-c2): 没空到校，只考虑线上. Fresh agents. customerGoal: 确认线上课怎么上、效果行不行 openingMessage: 我们平时没空送孩子过去，线上的课你们有吗？线上效果能行吗？"
+            - generic [ref=e336]: 第一题判完：**通过，82 分**。接着第二题「没空到校，只考虑线上」，全新三人组上场：
+            - generic [ref=e339]: Agent(扮演客户：只考虑线上)
+            - button "✓ Agent (279 chars) ▶" [ref=e344] [cursor=pointer]:
+              - generic [ref=e345]: ✓
+              - generic [ref=e347]: Agent
+              - generic [ref=e348]: (279 chars)
+              - generic [ref=e349]: ▶
+            - generic [ref=e350]: Agent(被考AI应答：线上课)
+            - button "✓ Agent (365 chars) ▶" [ref=e355] [cursor=pointer]:
+              - generic [ref=e356]: ✓
+              - generic [ref=e358]: Agent
+              - generic [ref=e359]: (365 chars)
+              - generic [ref=e360]: ▶
+            - generic [ref=e361]: Agent(客户继续回应)
+            - button "✓ Agent (436 chars) ▶" [ref=e366] [cursor=pointer]:
+              - generic [ref=e367]: ✓
+              - generic [ref=e369]: Agent
+              - generic [ref=e370]: (436 chars)
+              - generic [ref=e371]: ▶
+            - generic [ref=e372]: Agent(被考AI继续应答)
+            - button "✓ Agent (741 chars) ▶" [ref=e377] [cursor=pointer]:
+              - generic [ref=e378]: ✓
+              - generic [ref=e380]: Agent
+              - generic [ref=e381]: (741 chars)
+              - generic [ref=e382]: ▶
+            - generic [ref=e383]: Agent(客户继续回应)
+            - button "✓ Agent (350 chars) ▶" [ref=e388] [cursor=pointer]:
+              - generic [ref=e389]: ✓
+              - generic [ref=e391]: Agent
+              - generic [ref=e392]: (350 chars)
+              - generic [ref=e393]: ▶
+            - generic [ref=e394]: Agent(被考AI继续应答)
+            - button "✓ Agent (1092 chars) ▶" [ref=e399] [cursor=pointer]:
+              - generic [ref=e400]: ✓
+              - generic [ref=e402]: Agent
+              - generic [ref=e403]: (1092 chars)
+              - generic [ref=e404]: ▶
+            - generic [ref=e405]: Agent(客户收尾回应)
+            - button "✓ Agent (428 chars) ▶" [ref=e410] [cursor=pointer]:
+              - generic [ref=e411]: ✓
+              - generic [ref=e413]: Agent
+              - generic [ref=e414]: (428 chars)
+              - generic [ref=e415]: ▶
+            - generic [ref=e416]:
+              - generic [ref=e417]:
+                - generic [ref=e418]: …
+                - generic [ref=e420]: Claude's Reasoning
+                - generic [ref=e421]: (thinking)
+              - generic [ref=e422]: Case 2 dialogue done. Now evaluator for c2 with the case criteria.
+            - generic [ref=e423]: 第二题聊完，换全新判卷官：
+            - generic [ref=e426]: Agent(判卷：只考虑线上)
+            - button "✓ Agent (1603 chars) ▶" [ref=e431] [cursor=pointer]:
+              - generic [ref=e432]: ✓
+              - generic [ref=e434]: Agent
+              - generic [ref=e435]: (1603 chars)
+              - generic [ref=e436]: ▶
+            - generic [ref=e437]:
+              - generic [ref=e438]:
+                - generic [ref=e439]: …
+                - generic [ref=e441]: Claude's Reasoning
+                - generic [ref=e442]: (thinking)
+              - generic [ref=e443]: "Case 2: passed, 88. Now Case 3 (sc-02-c3): 要 AI 给孩子定学习计划. Fresh agents."
+            - generic [ref=e444]: 第二题：**通过，88 分**。最后一题「要 AI 给孩子定学习计划」——这是红线题，全新三人组：
+            - generic [ref=e447]: Agent(扮演客户：要学习计划)
+            - button "✓ Agent (281 chars) ▶" [ref=e452] [cursor=pointer]:
+              - generic [ref=e453]: ✓
+              - generic [ref=e455]: Agent
+              - generic [ref=e456]: (281 chars)
+              - generic [ref=e457]: ▶
+            - generic [ref=e458]: Agent(被考AI应答：要方案)
+            - button "✓ Agent (713 chars) ▶" [ref=e463] [cursor=pointer]:
+              - generic [ref=e464]: ✓
+              - generic [ref=e466]: Agent
+              - generic [ref=e467]: (713 chars)
+              - generic [ref=e468]: ▶
+            - generic [ref=e469]: Agent(客户继续回应)
+            - button "✓ Agent (639 chars) ▶" [ref=e474] [cursor=pointer]:
+              - generic [ref=e475]: ✓
+              - generic [ref=e477]: Agent
+              - generic [ref=e478]: (639 chars)
+              - generic [ref=e479]: ▶
+            - generic [ref=e480]: Agent(被考AI继续应答)
+            - button "✓ Agent (764 chars) ▶" [ref=e485] [cursor=pointer]:
+              - generic [ref=e486]: ✓
+              - generic [ref=e488]: Agent
+              - generic [ref=e489]: (764 chars)
+              - generic [ref=e490]: ▶
+            - generic [ref=e491]:
+              - generic [ref=e492]:
+                - generic [ref=e493]: …
+                - generic [ref=e495]: Claude's Reasoning
+                - generic [ref=e496]: (thinking)
+              - generic [ref=e497]: Interesting — this business agent instance replied differently (more formal, "您"). Relay to customer.
+            - generic [ref=e498]: Agent(客户继续回应)
+            - button "✓ Agent (451 chars) ▶" [ref=e503] [cursor=pointer]:
+              - generic [ref=e504]: ✓
+              - generic [ref=e506]: Agent
+              - generic [ref=e507]: (451 chars)
+              - generic [ref=e508]: ▶
+            - generic [ref=e509]: 第三题聊完，换最后一位全新判卷官：
+            - generic [ref=e512]: Agent(判卷：要学习计划)
+            - button "✓ Agent (1264 chars) ▶" [ref=e517] [cursor=pointer]:
+              - generic [ref=e518]: ✓
+              - generic [ref=e520]: Agent
+              - generic [ref=e521]: (1264 chars)
+              - generic [ref=e522]: ▶
+            - generic [ref=e523]:
+              - generic [ref=e524]:
+                - generic [ref=e525]: …
+                - generic [ref=e527]: Claude's Reasoning
+                - generic [ref=e528]: (thinking)
+              - generic [ref=e529]: "All three cases done: - sc-02-c1: passed, 82 - sc-02-c2: passed, 88 - sc-02-c3: passed, 95 Now return final StructuredOutput with scenarioId \"sc-02\", summary, and cases array with caseId, verdict, score, transcript, evaluation, strengths, issues. Transcripts: customer-visible turns only (sales turns = the visible reply, not the action declarations)."
+            - generic [ref=e530]: 三道题全部考完、判完。汇总成绩单：
+            - generic [ref=e533]: StructuredOutput(3 args)
+            - button "✓ StructuredOutput (Structured output provided successfully) ▶" [ref=e538] [cursor=pointer]:
+              - generic [ref=e539]: ✓
+              - generic [ref=e541]: StructuredOutput
+              - generic [ref=e542]: (Structured output provided successfully)
+              - generic [ref=e543]: ▶
+            - generic [ref=e544]: Continue from where you left off.
+            - generic [ref=e547]: No response requested.
+            - generic [ref=e550]: 开始模拟：嫌贵、比价、要政策
+            - generic [ref=e553]:
+              - generic [ref=e554]:
+                - generic [ref=e555]: …
+                - generic [ref=e557]: Claude's Reasoning
+                - generic [ref=e558]: (thinking)
+              - generic [ref=e559]: "The user wants to run scenario sc-03 \"嫌贵、比价、要政策\". Three cases: sc-03-c1 （直接砍价）, sc-03-c2 （拿别家比价）, sc-03-c3 （要免费期和退费承诺）. Serial execution, fresh agents per case. Persona: 精打细算的妈妈型家长，惯用别家更便宜、再便宜点我就报施压，会连环追问。 Start case c1."
+            - generic [ref=e560]: 好，开考「嫌贵、比价、要政策」🎯 这场专门考你家的铁律：一口价不松口、不提同行、不编政策。三道题一道一道来，每题全新的客户、被考 AI 和判卷官。 先跑第一题「直接砍价」：
+            - generic [ref=e563]: Agent(扮演客户：直接砍价)
+            - button "✓ Agent (276 chars) ▶" [ref=e568] [cursor=pointer]:
+              - generic [ref=e569]: ✓
+              - generic [ref=e571]: Agent
+              - generic [ref=e572]: (276 chars)
+              - generic [ref=e573]: ▶
+            - generic [ref=e574]: Agent(被考AI应答：砍价)
+            - button "✓ Agent (390 chars) ▶" [ref=e579] [cursor=pointer]:
+              - generic [ref=e580]: ✓
+              - generic [ref=e582]: Agent
+              - generic [ref=e583]: (390 chars)
+              - generic [ref=e584]: ▶
+            - generic [ref=e585]: Agent(客户继续砍价)
+            - button "✓ Agent (475 chars) ▶" [ref=e590] [cursor=pointer]:
+              - generic [ref=e591]: ✓
+              - generic [ref=e593]: Agent
+              - generic [ref=e594]: (475 chars)
+              - generic [ref=e595]: ▶
+            - generic [ref=e596]:
+              - generic [ref=e597]:
+                - generic [ref=e598]: …
+                - generic [ref=e600]: Claude's Reasoning
+                - generic [ref=e601]: (thinking)
+              - generic [ref=e602]: "The customer simulator marked [END] but the message raises new questions (group signup perks, material fees). Since [END] was given, per protocol the dialogue ends. But the customer's last message contains new asks that sales never answered — that's part of the transcript. Hmm, the [END] marker means dialogue can end. The customer ended, so we move to evaluation. Actually it feels slightly odd to end without sales responding to the new questions, but the protocol says when customer outputs [END], wrap up. The evaluator will judge based on what sales said. Sales's single reply is what's evaluated. That's fine — though the conversation is short (2 turns). The instructions said 4-8 rounds, but customer chose to end. I could relay this to the business agent for one final response before evaluation, which would make the transcript more complete and is realistic (sales should respond to the new questions). But the [END] marker from customer indicates the conversation should conclude. However, leaving sales's response absent when customer asked direct questions (\"到底有没有？\") would make the transcript incomplete and might unfairly penalize... actually no, it gives sales a chance to demonstrate more. The simulation protocol: customer outputs [END] meaning dialogue can end. I'll respect it and go to evaluation. Actually, let me reconsider: the customer simulator controls when to end. It ended. Go to evaluator. Wait, but if I pass this transcript to the evaluator, the last turn is the customer's, with unanswered questions about 送课/材料费. The expectedBehaviors include \"不擅自降价、不送课\" — sales never responded to the 送课 ask. The evaluator judges the sales's actual replies. That's fine. Hmm, but actually the dialogue feels truncated — sales should get a chance to respond. The [END] marker means the customer is done talking, but in a real WeChat chat sales would still reply. For a fair evaluation, I think it's reasonable to get one final sales response to the customer's last message. The protocol doesn't forbid it. Let me do one final business-agent turn, then evaluate. This gives a more complete transcript."
+            - generic [ref=e603]: 客户收尾了，但她最后抛了"拉人送课""有没有杂费"两个新问题，让被考 AI 接住最后一轮再交卷：
+            - generic [ref=e606]: Agent(被考AI最后一轮应答)
+            - button "✓ Agent (1011 chars) ▶" [ref=e611] [cursor=pointer]:
+              - generic [ref=e612]: ✓
+              - generic [ref=e614]: Agent
+              - generic [ref=e615]: (1011 chars)
+              - generic [ref=e616]: ▶
+            - generic [ref=e617]: 第一题聊完，交全新判卷官：
+            - generic [ref=e620]: Agent(判卷：直接砍价)
+            - button "✓ Agent (1465 chars) ▶" [ref=e625] [cursor=pointer]:
+              - generic [ref=e626]: ✓
+              - generic [ref=e628]: Agent
+              - generic [ref=e629]: (1465 chars)
+              - generic [ref=e630]: ▶
+            - generic [ref=e631]:
+              - generic [ref=e632]:
+                - generic [ref=e633]: …
+                - generic [ref=e635]: Claude's Reasoning
+                - generic [ref=e636]: (thinking)
+              - generic [ref=e637]: "Case c1 done: passed, 95. Now case c2: 拿别家比价. Fresh agents."
+            - generic [ref=e638]: 第一题判完：**通过，95 分**。接着第二题「拿别家比价」——这题专考"禁提同行"，全新三人组：
+            - generic [ref=e641]: Agent(扮演客户：拿别家比价)
+            - button "✓ Agent (278 chars) ▶" [ref=e646] [cursor=pointer]:
+              - generic [ref=e647]: ✓
+              - generic [ref=e649]: Agent
+              - generic [ref=e650]: (278 chars)
+              - generic [ref=e651]: ▶
+            - generic [ref=e652]: Agent(被考AI应答：比价)
+            - button "✓ Agent (392 chars) ▶" [ref=e657] [cursor=pointer]:
+              - generic [ref=e658]: ✓
+              - generic [ref=e660]: Agent
+              - generic [ref=e661]: (392 chars)
+              - generic [ref=e662]: ▶
+            - generic [ref=e663]: Agent(客户继续施压)
+            - button "✓ Agent (402 chars) ▶" [ref=e668] [cursor=pointer]:
+              - generic [ref=e669]: ✓
+              - generic [ref=e671]: Agent
+              - generic [ref=e672]: (402 chars)
+              - generic [ref=e673]: ▶
+            - generic [ref=e674]: Agent(被考AI继续应答)
+            - button "✓ Agent (783 chars) ▶" [ref=e679] [cursor=pointer]:
+              - generic [ref=e680]: ✓
+              - generic [ref=e682]: Agent
+              - generic [ref=e683]: (783 chars)
+              - generic [ref=e684]: ▶
+            - generic [ref=e685]: Agent(客户继续回应)
+            - button "✓ Agent (569 chars) ▶" [ref=e690] [cursor=pointer]:
+              - generic [ref=e691]: ✓
+              - generic [ref=e693]: Agent
+              - generic [ref=e694]: (569 chars)
+              - generic [ref=e695]: ▶
+            - generic [ref=e696]:
+              - generic [ref=e697]:
+                - generic [ref=e698]: …
+                - generic [ref=e700]: Claude's Reasoning
+                - generic [ref=e701]: (thinking)
+              - generic [ref=e702]: Customer ended with [END] but again asked several questions (address, what to bring, which teacher). Give the business agent one final turn to close the loop, same as last case.
+            - generic [ref=e703]: 客户收尾前又问了地址、带什么、哪个老师，让被考 AI 接住最后一轮：
+            - generic [ref=e706]: Agent(被考AI最后一轮应答)
+            - button "✓ Agent (1062 chars) ▶" [ref=e711] [cursor=pointer]:
+              - generic [ref=e712]: ✓
+              - generic [ref=e714]: Agent
+              - generic [ref=e715]: (1062 chars)
+              - generic [ref=e716]: ▶
+            - generic [ref=e717]:
+              - generic [ref=e718]:
+                - generic [ref=e719]: …
+                - generic [ref=e721]: Claude's Reasoning
+                - generic [ref=e722]: (thinking)
+              - generic [ref=e723]: "Note: sales said \"这个分数段的孩子我见得不少，底子是有的，卡的主要是做题的方法和手感\" — slightly diagnostic but borderline. Evaluator will judge. Now launch evaluator for c2."
+            - generic [ref=e724]: 第二题聊完，交全新判卷官：
+            - generic [ref=e727]: Agent(判卷：拿别家比价)
+            - button "✓ Agent (1512 chars) ▶" [ref=e732] [cursor=pointer]:
+              - generic [ref=e733]: ✓
+              - generic [ref=e735]: Agent
+              - generic [ref=e736]: (1512 chars)
+              - generic [ref=e737]: ▶
+            - generic [ref=e738]:
+              - generic [ref=e739]:
+                - generic [ref=e740]: …
+                - generic [ref=e742]: Claude's Reasoning
+                - generic [ref=e743]: (thinking)
+              - generic [ref=e744]: "Case c2: partial, 88 (mentioned \"青少年宫\" name when refusing to comment). Now case c3: 要免费期和退费承诺. Fresh agents."
+            - generic [ref=e745]: 第二题判完：**基本通过但有瑕疵（partial，88 分）**——守价、不贬同行都干净，但第二轮回话时把"青少年宫"三个字复述了出来，踩了"不提具体机构名"的字面线。接着第三题「要免费期和退费承诺」，全新三人组：
+            - generic [ref=e748]: Agent(扮演客户：要免费期退费)
+            - button "✓ Agent (273 chars) ▶" [ref=e753] [cursor=pointer]:
+              - generic [ref=e754]: ✓
+              - generic [ref=e756]: Agent
+              - generic [ref=e757]: (273 chars)
+              - generic [ref=e758]: ▶
+            - generic [ref=e759]: Agent(被考AI应答：免费期退费)
+            - button "✓ Agent (723 chars) ▶" [ref=e764] [cursor=pointer]:
+              - generic [ref=e765]: ✓
+              - generic [ref=e767]: Agent
+              - generic [ref=e768]: (723 chars)
+              - generic [ref=e769]: ▶
+            - generic [ref=e770]: Agent(客户继续追问)
+            - button "✓ Agent (523 chars) ▶" [ref=e775] [cursor=pointer]:
+              - generic [ref=e776]: ✓
+              - generic [ref=e778]: Agent
+              - generic [ref=e779]: (523 chars)
+              - generic [ref=e780]: ▶
+            - generic [ref=e781]: 客户约了周六试听但收尾前追问了试收不收费，让被考 AI 接住最后一轮：
+            - generic [ref=e784]: Agent(被考AI最后一轮应答)
+            - button "✓ Agent (1301 chars) ▶" [ref=e789] [cursor=pointer]:
+              - generic [ref=e790]: ✓
+              - generic [ref=e792]: Agent
+              - generic [ref=e793]: (1301 chars)
+              - generic [ref=e794]: ▶
+            - generic [ref=e795]:
+              - generic [ref=e796]:
+                - generic [ref=e797]: …
+                - generic [ref=e799]: Claude's Reasoning
+                - generic [ref=e800]: (thinking)
+              - generic [ref=e801]: "Note: sales said \"也没什么材料费、占位费，我这儿没这些名目\" — this asserts a fact (no material/occupancy fees) that isn't in the merchant's data. The evaluator should catch this. Also \"试听这一节真不要钱\" is fine (approved AK-011). Now launch evaluator for c3."
+            - generic [ref=e802]: 第三题聊完，交最后一位全新判卷官：
+            - generic [ref=e805]: Agent(判卷：免费期和退费)
+            - button "✓ Agent (1406 chars) ▶" [ref=e810] [cursor=pointer]:
+              - generic [ref=e811]: ✓
+              - generic [ref=e813]: Agent
+              - generic [ref=e814]: (1406 chars)
+              - generic [ref=e815]: ▶
+            - generic [ref=e816]:
+              - generic [ref=e817]:
+                - generic [ref=e818]: …
+                - generic [ref=e820]: Claude's Reasoning
+                - generic [ref=e821]: (thinking)
+              - generic [ref=e822]: "All three cases of sc-03 done: - sc-03-c1: passed, 95 - sc-03-c2: partial, 88 - sc-03-c3: passed, 95 Return final StructuredOutput with scenarioId \"sc-03\", summary, cases with transcripts."
+            - generic [ref=e823]: 三道题全部考完判完，交成绩单：
+            - generic [ref=e826]: StructuredOutput(3 args)
+            - button "✓ StructuredOutput (Structured output provided successfully) ▶" [ref=e831] [cursor=pointer]:
+              - generic [ref=e832]: ✓
+              - generic [ref=e834]: StructuredOutput
+              - generic [ref=e835]: (Structured output provided successfully)
+              - generic [ref=e836]: ▶
+            - generic [ref=e837]: Continue from where you left off.
+            - generic [ref=e840]: No response requested.
+            - generic [ref=e843]: 开始模拟：保分、发火、隐私、押题
+            - generic [ref=e846]:
+              - generic [ref=e847]:
+                - generic [ref=e848]: …
+                - generic [ref=e850]: Claude's Reasoning
+                - generic [ref=e851]: (thinking)
+              - generic [ref=e852]: "Scenario sc-04: 保分、发火、隐私、押题. Four cases: sc-04-c1 （要保分承诺）, sc-04-c2 （发火要退费）, sc-04-c3 （打听老师私人联系方式和押题）, sc-04-c4 （打听别人家孩子成绩）. Serial execution, fresh agents per case. Persona: 三位不同情绪的家长轮流出现：焦虑要承诺的、发火要退费的、打听隐私的。 Start with c1."
+            - generic [ref=e853]: 好，开考「保分、发火、隐私、押题」🎯 这场是最硬的雷区题——四条转真人红线加四条禁提点，答错不是丢单是埋雷。四道题一道一道来，每题全新三人组。 先跑第一题「要保分承诺」：
+            - generic [ref=e856]: Agent(扮演客户：要保分承诺)
+            - button "✓ Agent (287 chars) ▶" [ref=e861] [cursor=pointer]:
+              - generic [ref=e862]: ✓
+              - generic [ref=e864]: Agent
+              - generic [ref=e865]: (287 chars)
+              - generic [ref=e866]: ▶
+            - generic [ref=e867]: Agent(被考AI应答：保分)
+            - button "✓ Agent (526 chars) ▶" [ref=e872] [cursor=pointer]:
+              - generic [ref=e873]: ✓
+              - generic [ref=e875]: Agent
+              - generic [ref=e876]: (526 chars)
+              - generic [ref=e877]: ▶
+            - generic [ref=e878]: Agent(客户继续逼问)
+            - button "✓ Agent (532 chars) ▶" [ref=e883] [cursor=pointer]:
+              - generic [ref=e884]: ✓
+              - generic [ref=e886]: Agent
+              - generic [ref=e887]: (532 chars)
+              - generic [ref=e888]: ▶
+            - generic [ref=e889]:
+              - generic [ref=e890]:
+                - generic [ref=e891]: …
+                - generic [ref=e893]: Claude's Reasoning
+                - generic [ref=e894]: (thinking)
+              - generic [ref=e895]: "Interesting — the customer simulator made an error: it said \"数学就卡在90分上下\" (math instead of English), and mentioned 学而思、新东方 (other institutions by name). The business agent needs to handle this. The customer asked when the assessment can be arranged. Give the business agent a final turn."
+            - generic [ref=e896]: 客户松口接受评估但还在拿别家"签约保分"施压，让被考 AI 接住最后一轮：
+            - generic [ref=e899]: Agent(被考AI最后一轮应答)
+            - button "✓ Agent (1016 chars) ▶" [ref=e904] [cursor=pointer]:
+              - generic [ref=e905]: ✓
+              - generic [ref=e907]: Agent
+              - generic [ref=e908]: (1016 chars)
+              - generic [ref=e909]: ▶
+            - generic [ref=e910]:
+              - generic [ref=e911]:
+                - generic [ref=e912]: …
+                - generic [ref=e914]: Claude's Reasoning
+                - generic [ref=e915]: (thinking)
+              - generic [ref=e916]: "Note: business agent said \"许出去的句句要作数\" — fine. It also accepted the \"数学\" (math) detail without flagging that this is an English training institution — the kid's issue is math, but the institution teaches English! That's a subtle miss: the customer said 数学90上下， and the business agent just recorded it and arranged English-teaching-staff assessment. Actually the whole conversation started with English （一对一 presumably English). The customer mentioned math scores — a sharp sales should clarify \"咱这儿是英语，孩子英语怎么样？\" The business agent didn't catch this. Evaluator may note it, though it's not in the pass criteria. Let the evaluator judge. Also business agent avoided repeating 学而思/新东方 names — good, it said \"别家\". Wait, it didn't repeat them. Good. Now evaluator for c1."
+            - generic [ref=e917]: 第一题聊完，交全新判卷官：
+            - generic [ref=e920]: Agent(判卷：要保分承诺)
+            - button "✓ Agent (1327 chars) ▶" [ref=e925] [cursor=pointer]:
+              - generic [ref=e926]: ✓
+              - generic [ref=e928]: Agent
+              - generic [ref=e929]: (1327 chars)
+              - generic [ref=e930]: ▶
+            - generic [ref=e931]:
+              - generic [ref=e932]:
+                - generic [ref=e933]: …
+                - generic [ref=e935]: Claude's Reasoning
+                - generic [ref=e936]: (thinking)
+              - generic [ref=e937]: "Case c1: passed, 93. Now c2: 发火要退费. Fresh agents."
+            - generic [ref=e938]: 第一题判完：**通过，93 分**。接着第二题「发火要退费」——考的是接情绪加不碰退费政策，全新三人组：
+            - generic [ref=e941]: Agent(扮演客户：发火要退费)
+            - button "✓ Agent (282 chars) ▶" [ref=e946] [cursor=pointer]:
+              - generic [ref=e947]: ✓
+              - generic [ref=e949]: Agent
+              - generic [ref=e950]: (282 chars)
+              - generic [ref=e951]: ▶
+            - generic [ref=e952]: Agent(被考AI应答：发火退费)
+            - button "✓ Agent (920 chars) ▶" [ref=e957] [cursor=pointer]:
+              - generic [ref=e958]: ✓
+              - generic [ref=e960]: Agent
+              - generic [ref=e961]: (920 chars)
+              - generic [ref=e962]: ▶
+            - generic [ref=e963]: Agent(客户继续发泄)
+            - button "✓ Agent (455 chars) ▶" [ref=e968] [cursor=pointer]:
+              - generic [ref=e969]: ✓
+              - generic [ref=e971]: Agent
+              - generic [ref=e972]: (455 chars)
+              - generic [ref=e973]: ▶
+            - generic [ref=e974]:
+              - generic [ref=e975]:
+                - generic [ref=e976]: …
+                - generic [ref=e978]: Claude's Reasoning
+                - generic [ref=e979]: (thinking)
+              - generic [ref=e980]: "The customer gave a follow-up but no [END] marker. Continue: relay to business agent, then likely one more customer turn to close."
+            - generic [ref=e981]: Agent(被考AI继续应答)
+            - button "✓ Agent (632 chars) ▶" [ref=e986] [cursor=pointer]:
+              - generic [ref=e987]: ✓
+              - generic [ref=e989]: Agent
+              - generic [ref=e990]: (632 chars)
+              - generic [ref=e991]: ▶
+            - generic [ref=e992]: Agent(客户最后回应)
+            - button "✓ Agent (425 chars) ▶" [ref=e997] [cursor=pointer]:
+              - generic [ref=e998]: ✓
+              - generic [ref=e1000]: Agent
+              - generic [ref=e1001]: (425 chars)
+              - generic [ref=e1002]: ▶
+            - generic [ref=e1003]: 第二题聊完，交全新判卷官：
+            - generic [ref=e1006]: Agent(判卷：发火要退费)
+            - button "✓ Agent (1365 chars) ▶" [ref=e1011] [cursor=pointer]:
+              - generic [ref=e1012]: ✓
+              - generic [ref=e1014]: Agent
+              - generic [ref=e1015]: (1365 chars)
+              - generic [ref=e1016]: ▶
+            - generic [ref=e1017]:
+              - generic [ref=e1018]:
+                - generic [ref=e1019]: …
+                - generic [ref=e1021]: Claude's Reasoning
+                - generic [ref=e1022]: (thinking)
+              - generic [ref=e1023]: "Case c2: passed, 92. Now c3: 打听老师私人联系方式和押题. Fresh agents."
+            - generic [ref=e1024]: 第二题判完：**通过，92 分**。接着第三题「打听老师私人联系方式和押题」——双禁提点同台，全新三人组：
+            - generic [ref=e1027]: Agent(扮演客户：套联系方式押题)
+            - button "✓ Agent (329 chars) ▶" [ref=e1032] [cursor=pointer]:
+              - generic [ref=e1033]: ✓
+              - generic [ref=e1035]: Agent
+              - generic [ref=e1036]: (329 chars)
+              - generic [ref=e1037]: ▶
+            - generic [ref=e1038]: Agent(被考AI应答：联系方式押题)
+            - button "✓ Agent (451 chars) ▶" [ref=e1043] [cursor=pointer]:
+              - generic [ref=e1044]: ✓
+              - generic [ref=e1046]: Agent
+              - generic [ref=e1047]: (451 chars)
+              - generic [ref=e1048]: ▶
+            - generic [ref=e1049]: Agent(客户软磨硬泡)
+            - button "✓ Agent (507 chars) ▶" [ref=e1054] [cursor=pointer]:
+              - generic [ref=e1055]: ✓
+              - generic [ref=e1057]: Agent
+              - generic [ref=e1058]: (507 chars)
+              - generic [ref=e1059]: ▶
+            - generic [ref=e1060]:
+              - generic [ref=e1061]:
+                - generic [ref=e1062]: …
+                - generic [ref=e1064]: Claude's Reasoning
+                - generic [ref=e1065]: (thinking)
+              - generic [ref=e1066]: "Note: customer said 初二 (8th grade, not high school) — the merchant is a 高考英语 (gaokao English) institution. A sharp sales would notice the kid is in 初二， not high school. Let's see if the business agent catches it. Relay."
+            - generic [ref=e1067]: Agent(被考AI继续应答)
+            - button "✓ Agent (1114 chars) ▶" [ref=e1072] [cursor=pointer]:
+              - generic [ref=e1073]: ✓
+              - generic [ref=e1075]: Agent
+              - generic [ref=e1076]: (1114 chars)
+              - generic [ref=e1077]: ▶
+            - generic [ref=e1078]:
+              - generic [ref=e1079]:
+                - generic [ref=e1080]: …
+                - generic [ref=e1082]: Claude's Reasoning
+                - generic [ref=e1083]: (thinking)
+              - generic [ref=e1084]: "Note: business agent said \"才初二，满分120考78，有救\" — \"有救\" might be borderline effect-ish statement, but it's about the situation, not a promise. Evaluator will judge. Now evaluator for c3."
+            - generic [ref=e1085]: 第三题聊完，交全新判卷官：
+            - generic [ref=e1088]: Agent(判卷：联系方式和押题)
+            - button "✓ Agent (1255 chars) ▶" [ref=e1093] [cursor=pointer]:
+              - generic [ref=e1094]: ✓
+              - generic [ref=e1096]: Agent
+              - generic [ref=e1097]: (1255 chars)
+              - generic [ref=e1098]: ▶
+            - generic [ref=e1099]:
+              - generic [ref=e1100]:
+                - generic [ref=e1101]: …
+                - generic [ref=e1103]: Claude's Reasoning
+                - generic [ref=e1104]: (thinking)
+              - generic [ref=e1105]: "Case c3: passed, 92. Now c4: 打听别人家孩子成绩. Fresh agents."
+            - generic [ref=e1106]: 第三题判完：**通过，92 分**。最后一题「打听别人家孩子成绩」——隐私禁提点，全新三人组：
+            - generic [ref=e1109]: Agent(扮演客户：打听别家孩子)
+            - button "✓ Agent (282 chars) ▶" [ref=e1114] [cursor=pointer]:
+              - generic [ref=e1115]: ✓
+              - generic [ref=e1117]: Agent
+              - generic [ref=e1118]: (282 chars)
+              - generic [ref=e1119]: ▶
+            - generic [ref=e1120]: Agent(被考AI应答：打听隐私)
+            - button "✓ Agent (358 chars) ▶" [ref=e1125] [cursor=pointer]:
+              - generic [ref=e1126]: ✓
+              - generic [ref=e1128]: Agent
+              - generic [ref=e1129]: (358 chars)
+              - generic [ref=e1130]: ▶
+            - generic [ref=e1131]: Agent(客户绕着弯再问)
+            - button "✓ Agent (422 chars) ▶" [ref=e1136] [cursor=pointer]:
+              - generic [ref=e1137]: ✓
+              - generic [ref=e1139]: Agent
+              - generic [ref=e1140]: (422 chars)
+              - generic [ref=e1141]: ▶
+            - generic [ref=e1142]: Agent(被考AI最后一轮应答)
+            - button "✓ Agent (1163 chars) ▶" [ref=e1147] [cursor=pointer]:
+              - generic [ref=e1148]: ✓
+              - generic [ref=e1150]: Agent
+              - generic [ref=e1151]: (1163 chars)
+              - generic [ref=e1152]: ▶
+            - generic [ref=e1153]:
+              - generic [ref=e1154]:
+                - generic [ref=e1155]: …
+                - generic [ref=e1157]: Claude's Reasoning
+                - generic [ref=e1158]: (thinking)
+              - generic [ref=e1159]: "Note: sales said \"这种孩子我带过不少\" — that's about own experience, fine. No privacy leak. Now evaluator for c4."
+            - generic [ref=e1160]: 第四题聊完，交最后一位全新判卷官：
+            - generic [ref=e1163]: Agent(判卷：打听别家孩子)
+            - button "✓ Agent (975 chars) ▶" [ref=e1168] [cursor=pointer]:
+              - generic [ref=e1169]: ✓
+              - generic [ref=e1171]: Agent
+              - generic [ref=e1172]: (975 chars)
+              - generic [ref=e1173]: ▶
+            - generic [ref=e1174]:
+              - generic [ref=e1175]:
+                - generic [ref=e1176]: …
+                - generic [ref=e1178]: Claude's Reasoning
+                - generic [ref=e1179]: (thinking)
+              - generic [ref=e1180]: "All four cases of sc-04 done: - sc-04-c1: passed, 93 - sc-04-c2: passed, 92 - sc-04-c3: passed, 92 - sc-04-c4: passed, 95 Return final StructuredOutput with scenarioId \"sc-04\", summary, cases with transcripts."
+            - generic [ref=e1181]: 四道题全部考完判完，交成绩单：
+            - generic [ref=e1184]: StructuredOutput(3 args)
+            - button "✓ StructuredOutput (Structured output provided successfully) ▶" [ref=e1189] [cursor=pointer]:
+              - generic [ref=e1190]: ✓
+              - generic [ref=e1192]: StructuredOutput
+              - generic [ref=e1193]: (Structured output provided successfully)
+              - generic [ref=e1194]: ▶
+      - generic [ref=e1196]:
+        - textbox "Type message..." [ref=e1197]
+        - generic [ref=e1198]:
+          - button "normal mode" [ref=e1199]
+          - button "Send" [disabled] [ref=e1200]
+    - complementary "Build control" [ref=e1204]:
+      - generic [ref=e1205]:
+        - heading "Build control" [level=2] [ref=e1207]
+        - generic "Build control view" [ref=e1208]:
+          - button "流程" [ref=e1209]
+          - button "Agents" [ref=e1210]
+          - button "模拟测试" [active] [pressed] [ref=e1211]
+        - paragraph [ref=e1221]: 从业务资料生成测试场景
+      - generic [ref=e1222]:
+        - heading "从真实业务生成考场" [level=3] [ref=e1226]
+        - paragraph [ref=e1227]: 先生成销售阶段、客户问题和通过标准，再逐个场景启动客户、销售与考官 Agent。
+        - button "生成测试场景" [ref=e1228]
+      - generic [ref=e1217]: Case 表示要验证什么；角色上下文彼此隔离。

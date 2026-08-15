@@ -18,6 +18,7 @@ interface TaskSidebarProps {
   simulation: SimulationPanelState;
   onGenerateScenarios: () => void;
   onRunScenario: (scenario: SimulationScenario) => void;
+  onRunAllScenarios: (scenarios: SimulationScenario[]) => void;
 }
 
 export function TaskSidebar({
@@ -27,6 +28,7 @@ export function TaskSidebar({
   simulation,
   onGenerateScenarios,
   onRunScenario,
+  onRunAllScenarios,
 }: TaskSidebarProps) {
   const [view, setView] = useState<"tasks" | "agents" | "simulation">("tasks");
   const completed = tasks.filter((task) => task.status === "completed").length;
@@ -132,7 +134,7 @@ export function TaskSidebar({
             {simulation.status === "designing"
               ? "场景设计 Agent 正在工作"
               : simulation.status === "running"
-                ? "客户、销售与考官正在对打"
+                ? `${simulation.runningScenarioIds.length} 个场景正在并行测试`
                 : simulation.scenarios.length
                   ? `${simulation.scenarios.length} 个场景可测试`
                   : "从业务资料生成测试场景"}
@@ -163,6 +165,7 @@ export function TaskSidebar({
             disabled={isLoading}
             onGenerate={onGenerateScenarios}
             onRun={onRunScenario}
+            onRunAll={onRunAllScenarios}
           />
         ) : isLoading ? (
           <TaskSkeleton />
@@ -185,7 +188,7 @@ export function TaskSidebar({
             ? "任务表示要做什么，状态会自动更新。"
             : view === "agents"
               ? "Agent 表示谁在执行；输入仅显示安全摘要。"
-              : "Case 表示要验证什么；角色上下文彼此隔离。"}
+              : "每个场景独立运行；失败不会中断其他场景。"}
         </div>
       </div>
     </aside>

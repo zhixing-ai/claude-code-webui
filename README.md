@@ -124,14 +124,15 @@ chmod +x claude-code-webui-macos-arm64
 ### Option 3: Development Mode
 
 ```bash
-# Backend
-cd backend && npm run dev
+# First-time dependency installation
+make install
 
-# Frontend (new terminal)
-cd frontend && npm run dev
-
-# Open browser to http://localhost:3000
+# Start frontend and backend, then open the browser automatically
+make dev
 ```
+
+`make dev` automatically loads variables from `.env.local` in the project root.
+Press `Ctrl+C` to stop both development services.
 
 ### Prerequisites
 

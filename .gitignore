@@ -1,5 +1,7 @@
 .claude/
 !.claude/settings.json
+.env
+.env.local
 
 # Build artifacts
 dist/

@@ -27,10 +27,17 @@ describe("SimulationPanel", () => {
     const onGenerate = vi.fn();
     render(
       <SimulationPanel
-        state={{ status: "idle", scenarios: [], results: {} }}
+        state={{
+          status: "idle",
+          scenarios: [],
+          results: {},
+          runningScenarioIds: [],
+          scenarioErrors: {},
+        }}
         disabled={false}
         onGenerate={onGenerate}
         onRun={vi.fn()}
+        onRunAll={vi.fn()}
       />,
     );
 
@@ -44,6 +51,8 @@ describe("SimulationPanel", () => {
       status: "ready",
       scenarios: [scenario],
       results: {},
+      runningScenarioIds: [],
+      scenarioErrors: {},
     };
     render(
       <SimulationPanel
@@ -51,6 +60,7 @@ describe("SimulationPanel", () => {
         disabled={false}
         onGenerate={vi.fn()}
         onRun={onRun}
+        onRunAll={vi.fn()}
       />,
     );
 
@@ -58,5 +68,32 @@ describe("SimulationPanel", () => {
     expect(screen.getByText("“能不能再便宜一点？”")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "开始模拟" }));
     expect(onRun).toHaveBeenCalledWith(scenario);
+  });
+
+  it("starts every generated scenario in parallel", () => {
+    const onRunAll = vi.fn();
+    const secondScenario = {
+      ...scenario,
+      id: "after-sales",
+      title: "售后边界",
+    };
+    render(
+      <SimulationPanel
+        state={{
+          status: "ready",
+          scenarios: [scenario, secondScenario],
+          results: {},
+          runningScenarioIds: [],
+          scenarioErrors: {},
+        }}
+        disabled={false}
+        onGenerate={vi.fn()}
+        onRun={vi.fn()}
+        onRunAll={onRunAll}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "全部并行测试 · 2" }));
+    expect(onRunAll).toHaveBeenCalledWith([scenario, secondScenario]);
   });
 });

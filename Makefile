@@ -48,8 +48,14 @@ build-backend:
 	cd backend && npm run build
 
 # Development
+dev:
+	@set -a; \
+	[ ! -f .env.local ] || . ./.env.local; \
+	set +a; \
+	$(MAKE) -j2 dev-backend dev-frontend
+
 dev-frontend:
-	cd frontend && npm run dev
+	cd frontend && npm run dev -- --open
 dev-backend:
 	cd backend && npm run dev
 

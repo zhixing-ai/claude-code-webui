@@ -38,6 +38,10 @@ export const getRunUrl = (runId: string) => {
   return `${API_CONFIG.ENDPOINTS.RUNS}/${encodeURIComponent(runId)}`;
 };
 
+export const getRunsUrl = () => {
+  return API_CONFIG.ENDPOINTS.RUNS;
+};
+
 export const getSessionsUrl = (directory: string) => {
   return `/api/sessions?directory=${encodeURIComponent(directory)}`;
 };

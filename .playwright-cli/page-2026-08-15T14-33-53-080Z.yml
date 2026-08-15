@@ -1,0 +1,41 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - button "Back to project selection" [ref=e6]
+      - generic [ref=e9]:
+        - generic [ref=e10]:
+          - button "Claude Code Web UI" [ref=e11]
+          - generic [ref=e12]: Builder
+        - button "Return to new chat in /Users/shaobo/Workspace/zhixing/demo" [ref=e13]: /Users/shaobo/Workspace/zhixing/demo · 8fa6fcd0
+    - generic [ref=e14]:
+      - button "Toggle conversation list" [ref=e16]
+      - button "Open settings" [ref=e19]
+  - generic [ref=e22]:
+    - main [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - heading "Build with Claude" [level=1] [ref=e26]
+          - generic [ref=e27]: Ready
+        - region "Builder conversation" [ref=e28]:
+          - generic [ref=e30]:
+            - generic [ref=e31]: AI
+            - heading "Turn an idea into a working build" [level=2] [ref=e36]
+            - paragraph [ref=e37]: Describe what you want to create. Claude will collect the context, make a plan, use tools, and keep the build progress visible.
+            - generic [ref=e38]:
+              - generic [ref=e39]: Share context
+              - generic [ref=e43]: Review the plan
+              - generic [ref=e47]: Build and verify
+      - generic [ref=e52]:
+        - textbox "Type message..." [active] [ref=e53]
+        - generic [ref=e54]:
+          - button "normal mode" [ref=e55]
+          - button "Send" [disabled] [ref=e56]
+    - complementary "Build control" [ref=e60]:
+      - generic [ref=e61]:
+        - heading "Build control" [level=2] [ref=e63]
+        - generic "Build control view" [ref=e64]:
+          - button "流程" [pressed] [ref=e65]
+          - button "Agents" [ref=e66]
+          - button "模拟测试" [ref=e67]
+      - paragraph [ref=e72]: 搭建流程会在工作开始后显示。
+      - generic [ref=e73]: 任务表示要做什么，状态会自动更新。

@@ -17,7 +17,8 @@ export interface SimulationPanelState {
   status: "idle" | "designing" | "ready" | "running" | "error";
   scenarios: SimulationScenario[];
   results: Record<string, SimulationRunResult>;
-  activeScenarioId?: string;
+  runningScenarioIds: string[];
+  scenarioErrors: Record<string, string>;
   error?: string;
 }
 
@@ -26,6 +27,7 @@ interface SimulationPanelProps {
   disabled: boolean;
   onGenerate: () => void;
   onRun: (scenario: SimulationScenario) => void;
+  onRunAll: (scenarios: SimulationScenario[]) => void;
 }
 
 export function SimulationPanel({
@@ -33,6 +35,7 @@ export function SimulationPanel({
   disabled,
   onGenerate,
   onRun,
+  onRunAll,
 }: SimulationPanelProps) {
   if (state.status === "designing") {
     return (
@@ -51,7 +54,7 @@ export function SimulationPanel({
         </span>
         <h3 className="mt-3 text-[13px] font-semibold">从真实业务生成考场</h3>
         <p className="mt-1.5 max-w-60 text-[10px] leading-5 text-[var(--text-tertiary)]">
-          先生成销售阶段、客户问题和通过标准，再逐个场景启动客户、销售与考官
+          先生成销售阶段、客户问题和通过标准，再单个或一键并行启动客户、销售与考官
           Agent。
         </p>
         {state.error && <ErrorNotice message={state.error} />}
@@ -64,6 +67,13 @@ export function SimulationPanel({
   }
 
   const completed = Object.keys(state.results).length;
+  const running = state.runningScenarioIds.length;
+  const pending = state.scenarios.filter(
+    (scenario) =>
+      !state.results[scenario.id] &&
+      !state.runningScenarioIds.includes(scenario.id),
+  );
+  const batchTargets = pending.length > 0 ? pending : state.scenarios;
 
   return (
     <div aria-live="polite">
@@ -78,7 +88,7 @@ export function SimulationPanel({
         </div>
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled || running > 0}
           onClick={onGenerate}
           className="flex items-center gap-1 rounded-md px-2 py-1.5 text-[10px] text-[var(--text-secondary)] transition-[background-color,color] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-45"
         >
@@ -86,6 +96,29 @@ export function SimulationPanel({
           重新生成
         </button>
       </div>
+
+      <button
+        type="button"
+        disabled={disabled || running > 0}
+        onClick={() => onRunAll(batchTargets)}
+        className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--text-primary)] px-3 py-2.5 text-[10px] font-semibold text-[var(--bg-app)] transition-[opacity,transform] hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transition-none"
+      >
+        {running > 0 ? (
+          <>
+            <span className="size-3 animate-spin rounded-full border border-current border-t-transparent motion-reduce:animate-none" />
+            {running} 个场景并行测试中
+          </>
+        ) : (
+          <>
+            <PlayIcon className="size-3.5" />
+            {completed === state.scenarios.length
+              ? "全部重新测试"
+              : pending.length === state.scenarios.length
+                ? `全部并行测试 · ${state.scenarios.length}`
+                : `并行测试剩余 ${pending.length} 个`}
+          </>
+        )}
+      </button>
 
       {state.error && <ErrorNotice message={state.error} />}
 
@@ -96,10 +129,8 @@ export function SimulationPanel({
             index={index}
             scenario={scenario}
             result={state.results[scenario.id]}
-            running={
-              state.status === "running" &&
-              state.activeScenarioId === scenario.id
-            }
+            running={state.runningScenarioIds.includes(scenario.id)}
+            error={state.scenarioErrors[scenario.id]}
             disabled={disabled}
             onRun={() => onRun(scenario)}
           />
@@ -132,6 +163,7 @@ function ScenarioCard({
   scenario,
   result,
   running,
+  error,
   disabled,
   onRun,
 }: {
@@ -139,6 +171,7 @@ function ScenarioCard({
   scenario: SimulationScenario;
   result?: SimulationRunResult;
   running: boolean;
+  error?: string;
   disabled: boolean;
   onRun: () => void;
 }) {
@@ -160,6 +193,18 @@ function ScenarioCard({
               </span>
               {result && (
                 <CheckCircleIcon className="size-3.5 shrink-0 text-green-500" />
+              )}
+              {running && (
+                <span
+                  className="size-3 animate-spin rounded-full border border-[var(--accent)] border-t-transparent motion-reduce:animate-none"
+                  aria-label="正在模拟"
+                />
+              )}
+              {error && (
+                <ExclamationTriangleIcon
+                  className="size-3.5 shrink-0 text-amber-500"
+                  aria-label="模拟失败"
+                />
               )}
             </span>
             <span className="mt-1 flex items-center gap-1.5 text-[9px] text-[var(--text-tertiary)]">
@@ -204,6 +249,8 @@ function ScenarioCard({
             </p>
           )}
 
+          {error && <ErrorNotice message={error} />}
+
           <ol className="mt-3 space-y-2">
             {scenario.cases.map((testCase, caseIndex) => (
               <CaseRow
@@ -220,7 +267,7 @@ function ScenarioCard({
 
           <button
             type="button"
-            disabled={disabled}
+            disabled={disabled || running}
             onClick={onRun}
             className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--text-primary)] px-3 py-2 text-[10px] font-semibold text-[var(--bg-app)] transition-[opacity,transform] hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 motion-reduce:transition-none"
           >
