@@ -38,6 +38,11 @@ const VISIBLE_OUTPUT_AGENTS = new Set([
   "fde-document-auditor",
 ]);
 
+function shortAgentName(agentType: string): string {
+  const names = agentType.split(":");
+  return names[names.length - 1] ?? agentType;
+}
+
 export function reduceAgentEvent(
   state: AgentProjection,
   event: AgentLifecycleEvent,
@@ -62,7 +67,7 @@ export function reduceAgentEvent(
     event.agentType === "subagent" && existing?.agentType
       ? existing.agentType
       : event.agentType;
-  const canShowOutput = VISIBLE_OUTPUT_AGENTS.has(agentType);
+  const canShowOutput = VISIBLE_OUTPUT_AGENTS.has(shortAgentName(agentType));
   const run: AgentRun = {
     ...(existing ?? { id }),
     agentType,

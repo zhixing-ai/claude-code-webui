@@ -18,7 +18,11 @@ import type { RunStateStore, StoredRunEvent } from "../state/types.ts";
 import { MemoryRunStore } from "../state/memory.ts";
 import { logger } from "../utils/logger.ts";
 import { PendingInteractions } from "./interactions.ts";
-import { PLATFORM_AGENTS, projectAgentEvents } from "../agents.ts";
+import {
+  FDE_MAIN_AGENT,
+  FDE_PLUGIN_NAME,
+  projectAgentEvents,
+} from "../agents.ts";
 import {
   projectSimulationEvent,
   readSimulationCommand,
@@ -100,6 +104,18 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function hasPlugin(message: SDKMessage, name: string, path: string): boolean {
+  if (!isObject(message) || message.type !== "system") return false;
+  const plugins = (message as Record<string, unknown>).plugins;
+  return (
+    Array.isArray(plugins) &&
+    plugins.some(
+      (plugin) =>
+        isObject(plugin) && plugin.name === name && plugin.path === path,
+    )
+  );
+}
+
 function readOption(value: unknown): AskUserQuestionOption | null {
   if (
     !isObject(value) ||
@@ -165,11 +181,12 @@ export class ChatRunManager {
   private readonly encoder = new TextEncoder();
 
   constructor(
-    private readonly cliPath: string,
+    private readonly cliPath: string | undefined,
     private readonly interactions: PendingInteractions,
     private readonly requestAbortControllers: Map<string, AbortController>,
     private readonly runStore: RunStateStore,
     private readonly sessionStore: SessionStore,
+    private readonly fdeSuitePluginDir?: string,
   ) {}
 
   hasRun(runId: string): boolean {
@@ -259,11 +276,16 @@ export class ChatRunManager {
       abortController,
       executable: "node",
       executableArgs: [],
-      pathToClaudeCodeExecutable: this.cliPath,
+      ...(this.cliPath ? { pathToClaudeCodeExecutable: this.cliPath } : {}),
       includePartialMessages: true,
       forwardSubagentText: true,
       agentProgressSummaries: true,
-      agents: PLATFORM_AGENTS,
+      ...(this.fdeSuitePluginDir
+        ? {
+            plugins: [{ type: "local" as const, path: this.fdeSuitePluginDir }],
+            agent: FDE_MAIN_AGENT,
+          }
+        : {}),
       ...(request.simulation
         ? {
             tools: [
@@ -279,13 +301,9 @@ export class ChatRunManager {
         : {}),
       ...(request.newSessionId ? { sessionId: request.newSessionId } : {}),
       ...(request.sessionId ? { resume: request.sessionId } : {}),
-      ...(request.simulation
-        ? {
-            allowedTools: ["Task", "Agent", "StructuredOutput"],
-          }
-        : request.allowedTools
-          ? { allowedTools: request.allowedTools }
-          : {}),
+      ...(!request.simulation && request.allowedTools
+        ? { allowedTools: request.allowedTools }
+        : {}),
       ...(request.workingDirectory ? { cwd: request.workingDirectory } : {}),
       ...(request.additionalDirectories
         ? { additionalDirectories: request.additionalDirectories }
@@ -308,11 +326,13 @@ export class ChatRunManager {
       sessionStore: this.sessionStore,
       sessionStoreFlush: "eager",
       loadTimeoutMs: 90_000,
-      settings: {
-        autoCompactEnabled: true,
-        precomputeCompactionEnabled: true,
-      },
       canUseTool: async (toolName, input, permissionOptions) => {
+        if (
+          request.simulation &&
+          ["Task", "Agent", "StructuredOutput"].includes(toolName)
+        ) {
+          return { behavior: "allow", updatedInput: input };
+        }
         if (request.simulation && ["Read", "Glob", "Grep"].includes(toolName)) {
           return permissionOptions.agentID
             ? { behavior: "allow", updatedInput: input }
@@ -380,6 +400,15 @@ export class ChatRunManager {
 
     const forward = (sdkMessage: SDKMessage) => {
       logger.chat.debug("Claude SDK Message: {sdkMessage}", { sdkMessage });
+      if (
+        this.fdeSuitePluginDir &&
+        isObject(sdkMessage) &&
+        sdkMessage.type === "system" &&
+        sdkMessage.subtype === "init" &&
+        !hasPlugin(sdkMessage, FDE_PLUGIN_NAME, this.fdeSuitePluginDir)
+      ) {
+        throw new Error("FDE Suite plugin failed to load");
+      }
       const sessionId = readSessionId(sdkMessage);
       if (
         request.newSessionId &&
@@ -473,6 +502,7 @@ export class ChatRunManager {
         if (!anchors.length) throw cause ?? error;
 
         let compactedOptions: Options | undefined;
+        let compactionError: string | undefined;
         for (const resumeSessionAt of anchors) {
           const recoveryOptions: Options = {
             ...options,
@@ -490,6 +520,13 @@ export class ChatRunManager {
               compacted ||=
                 sdkMessage.type === "system" &&
                 sdkMessage.subtype === "compact_boundary";
+              if (
+                sdkMessage.type === "system" &&
+                sdkMessage.subtype === "status" &&
+                sdkMessage.compact_result === "failed"
+              ) {
+                compactionError = sdkMessage.compact_error;
+              }
               stillTooLong ||= isContextLimitMessage(sdkMessage);
             }
           } catch (compactError) {
@@ -503,7 +540,10 @@ export class ChatRunManager {
           if (!stillTooLong) break;
         }
         if (!compactedOptions) {
-          throw new Error("Claude Code did not complete session compaction");
+          throw new Error(
+            compactionError ??
+              "Claude Code did not complete session compaction",
+          );
         }
         await executeQuery(
           request.message,
@@ -628,6 +668,7 @@ export async function handleChatRequest(
           runsOrControllers,
           c.var.config.runStore ?? new MemoryRunStore(),
           c.var.config.sessionStore ?? new InMemorySessionStore(),
+          c.var.config.fdeSuitePluginDir,
         );
   let request: ChatRequest | null;
   try {

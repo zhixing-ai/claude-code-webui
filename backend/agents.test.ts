@@ -1,30 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { PLATFORM_AGENTS, projectAgentEvents } from "./agents.ts";
+import {
+  FDE_MAIN_AGENT,
+  projectAgentEvents,
+  shortAgentName,
+} from "./agents.ts";
 
 function message(value: unknown): SDKMessage {
   return value as SDKMessage;
 }
 
-describe("platform agents", () => {
-  it("registers the isolated FDE roles without write tools", () => {
-    expect(Object.keys(PLATFORM_AGENTS)).toEqual([
-      "fde-scenario-designer",
-      "fde-l1-examiner",
-      "fde-customer-simulator",
-      "fde-business-agent",
-      "fde-evaluator",
-      "fde-document-auditor",
-    ]);
-    for (const agent of Object.values(PLATFORM_AGENTS)) {
-      expect(agent.background).toBe(false);
-      expect(agent.permissionMode).toBe(
-        agent.tools?.length ? "default" : "dontAsk",
-      );
-      expect(agent.tools).not.toContain("Write");
-      expect(agent.tools).not.toContain("Edit");
-      expect(agent.tools).not.toContain("Bash");
-    }
+describe("plugin agents", () => {
+  it("uses the plugin namespace", () => {
+    expect(FDE_MAIN_AGENT).toBe("fde-suite:fde-builder");
+    expect(shortAgentName("fde-suite:fde-evaluator")).toBe("fde-evaluator");
   });
 });
 
@@ -35,13 +24,17 @@ describe("projectAgentEvents", () => {
         message({
           type: "system",
           subtype: "init",
-          agents: ["general-purpose", "fde-evaluator"],
+          agents: [
+            "general-purpose",
+            "fde-suite:fde-builder",
+            "fde-suite:fde-evaluator",
+          ],
         }),
       ),
     ).toEqual([
       {
-        agentRunId: "definition:fde-evaluator",
-        agentType: "fde-evaluator",
+        agentRunId: "definition:fde-suite:fde-evaluator",
+        agentType: "fde-suite:fde-evaluator",
         status: "registered",
       },
     ]);
@@ -58,7 +51,7 @@ describe("projectAgentEvents", () => {
                 id: "tool-1",
                 name: "Agent",
                 input: {
-                  subagent_type: "fde-evaluator",
+                  subagent_type: "fde-suite:fde-evaluator",
                   description: "Score case 7",
                   prompt: "hidden rubric",
                 },
@@ -70,7 +63,7 @@ describe("projectAgentEvents", () => {
     ).toEqual([
       {
         agentRunId: "tool:tool-1",
-        agentType: "fde-evaluator",
+        agentType: "fde-suite:fde-evaluator",
         status: "queued",
         toolUseId: "tool-1",
         description: "Score case 7",
@@ -84,7 +77,7 @@ describe("projectAgentEvents", () => {
           subtype: "task_started",
           task_id: "task-1",
           tool_use_id: "tool-1",
-          subagent_type: "fde-evaluator",
+          subagent_type: "fde-suite:fde-evaluator",
           description: "Score case 7",
           prompt: "hidden rubric",
         }),
@@ -92,7 +85,7 @@ describe("projectAgentEvents", () => {
     ).toEqual([
       {
         agentRunId: "task:task-1",
-        agentType: "fde-evaluator",
+        agentType: "fde-suite:fde-evaluator",
         status: "running",
         taskId: "task-1",
         toolUseId: "tool-1",

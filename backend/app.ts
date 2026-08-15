@@ -47,8 +47,9 @@ import {
 
 export interface AppConfig {
   debugMode: boolean;
-  staticPath: string;
-  cliPath: string; // Actual CLI script path detected by validateClaudeCli
+  staticPath?: string;
+  cliPath?: string; // Explicit compatible Claude Code override; SDK binary is the default
+  fdeSuitePluginDir?: string;
   runStore?: RunStateStore;
   sessionStore?: SessionStore;
 }
@@ -70,6 +71,7 @@ export function createApp(
     requestAbortControllers,
     runStore,
     sessionStore,
+    config.fdeSuitePluginDir,
   );
 
   // CORS middleware
@@ -89,6 +91,7 @@ export function createApp(
       debugMode: config.debugMode,
       runtime,
       cliPath: config.cliPath,
+      fdeSuitePluginDir: config.fdeSuitePluginDir,
       runStore,
       sessionStore,
     }),
@@ -141,31 +144,27 @@ export function createApp(
     handleInteractionRequest(c, runStore),
   );
 
-  // Static file serving with SPA fallback
-  // Serve static assets (CSS, JS, images, etc.)
-  const serveStatic = runtime.createStaticFileMiddleware({
-    root: config.staticPath,
-  });
-  app.use("/assets/*", serveStatic);
+  if (config.staticPath) {
+    // Static file serving with SPA fallback
+    const serveStatic = runtime.createStaticFileMiddleware({
+      root: config.staticPath,
+    });
+    app.use("/assets/*", serveStatic);
 
-  // SPA fallback - serve index.html for all unmatched routes (except API routes)
-  app.get("*", async (c) => {
-    const path = c.req.path;
+    app.get("*", async (c) => {
+      const path = c.req.path;
+      if (path.startsWith("/api/")) return c.text("Not found", 404);
 
-    // Skip API routes
-    if (path.startsWith("/api/")) {
-      return c.text("Not found", 404);
-    }
-
-    try {
-      const indexPath = `${config.staticPath}/index.html`;
-      const indexFile = await readBinaryFile(indexPath);
-      return c.html(new TextDecoder().decode(indexFile));
-    } catch (error) {
-      logger.app.error("Error serving index.html: {error}", { error });
-      return c.text("Internal server error", 500);
-    }
-  });
+      try {
+        const indexPath = `${config.staticPath}/index.html`;
+        const indexFile = await readBinaryFile(indexPath);
+        return c.html(new TextDecoder().decode(indexFile));
+      } catch (error) {
+        logger.app.error("Error serving index.html: {error}", { error });
+        return c.text("Internal server error", 500);
+      }
+    });
+  }
 
   return app;
 }

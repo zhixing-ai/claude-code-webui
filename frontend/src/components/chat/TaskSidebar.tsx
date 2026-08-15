@@ -252,7 +252,9 @@ function AgentCard({ agent }: { agent: AgentRun }) {
       agent.usage ||
       agent.outputProtected,
   );
-  const title = AGENT_LABELS[agent.agentType] ?? agent.agentType;
+  const names = agent.agentType.split(":");
+  const shortName = names[names.length - 1] ?? agent.agentType;
+  const title = AGENT_LABELS[shortName] ?? agent.agentType;
 
   return (
     <li className="builder-enter">

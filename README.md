@@ -135,7 +135,7 @@ cd frontend && npm run dev
 
 ### Prerequisites
 
-- ✅ **Claude CLI** installed and authenticated ([Get it here](https://github.com/anthropics/claude-code))
+- ✅ **Claude authentication** configured; the backend uses the Agent SDK bundled Claude Code binary by default
 - ✅ **Node.js >=22.5.0**
 - ✅ **Modern browser** (Chrome, Firefox, Safari, Edge)
 - ✅ **dotenvx** (for development): [Install guide](https://dotenvx.com/docs/install)
@@ -150,7 +150,8 @@ The backend server supports the following command-line options:
 | ---------------------- | --------------------------------------------------------- | ----------- |
 | `-p, --port <port>`    | Port to listen on                                         | 8080        |
 | `--host <host>`        | Host address to bind to (use 0.0.0.0 for all interfaces)  | 127.0.0.1   |
-| `--claude-path <path>` | Path to claude executable (overrides automatic detection) | Auto-detect |
+| `--claude-path <path>` | Compatible Claude Code 2.x override | Agent SDK bundled binary |
+| `--fde-suite-plugin-dir <path>` | Absolute path to the mounted FDE Suite plugin | `/Users/shaobo/Workspace/zhixing/fde-suite` |
 | `-d, --debug`          | Enable debug mode                                         | false       |
 | `-h, --help`           | Show help message                                         | -           |
 | `-v, --version`        | Show version                                              | -           |
@@ -158,6 +159,7 @@ The backend server supports the following command-line options:
 ### Environment Variables
 
 - `CLAUDE_CODE_WEBUI_PORT` (or `PORT`) - Same as `--port`
+- `FDE_SUITE_PLUGIN_DIR` - Same as `--fde-suite-plugin-dir`
 - `CLAUDE_CODE_WEBUI_HOST` (or `HOST`) - Same as `--host`
 - `DEBUG` - Same as `--debug`
 - `CLAUDE_CODE_BACKEND_SESSION_STORE_DATABASE_URL` - PostgreSQL URL for the Agent SDK session store
@@ -185,6 +187,10 @@ claude-code-webui --claude-path /path/to/claude
 # Using environment variables
 PORT=9000 DEBUG=true claude-code-webui
 ```
+
+Do not point `--claude-path` at Claude Code 1.x: plugin main agents require the
+`--agent` and `--plugin-dir` options available in compatible Claude Code 2.x
+executables.
 
 ### Session API and run streams
 

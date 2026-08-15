@@ -13,6 +13,7 @@ export interface ParsedArgs {
   port: number;
   host: string;
   claudePath?: string;
+  fdeSuitePluginDir: string;
 }
 
 export function parseCliArgs(): ParsedArgs {
@@ -26,6 +27,9 @@ export function parseCliArgs(): ParsedArgs {
   );
   const defaultHost =
     getEnv("CLAUDE_CODE_WEBUI_HOST") || getEnv("HOST") || "127.0.0.1";
+  const defaultFdeSuitePluginDir =
+    getEnv("FDE_SUITE_PLUGIN_DIR") ||
+    "/Users/shaobo/Workspace/zhixing/fde-suite";
 
   // Configure program
   program
@@ -51,7 +55,12 @@ export function parseCliArgs(): ParsedArgs {
     )
     .option(
       "--claude-path <path>",
-      "Path to claude executable (overrides automatic detection)",
+      "Path to a compatible Claude Code 2.x executable (defaults to the Agent SDK bundled binary)",
+    )
+    .option(
+      "--fde-suite-plugin-dir <path>",
+      "Absolute path to the mounted FDE Suite Claude Code plugin",
+      defaultFdeSuitePluginDir,
     )
     .option("-d, --debug", "Enable debug mode", false);
 
@@ -68,5 +77,6 @@ export function parseCliArgs(): ParsedArgs {
     port: options.port,
     host: options.host,
     claudePath: options.claudePath,
+    fdeSuitePluginDir: options.fdeSuitePluginDir,
   };
 }

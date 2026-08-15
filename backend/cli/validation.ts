@@ -311,6 +311,18 @@ export async function validateClaudeCli(
       );
     }
 
+    const help = await runtime.runCommand(claudePath, ["--help"]);
+    const supportedOptions = `${help.stdout}\n${help.stderr}`;
+    if (
+      !help.success ||
+      !supportedOptions.includes("--agent") ||
+      !supportedOptions.includes("--plugin-dir")
+    ) {
+      throw new Error(
+        "The configured Claude Code executable does not support --agent and --plugin-dir. Use the Agent SDK bundled binary or a compatible Claude Code 2.x executable.",
+      );
+    }
+
     // Detect the actual CLI script path using tracing approach
     logger.cli.info("🔍 Detecting actual Claude CLI script path...");
     const detection = await detectClaudeCliPath(runtime, claudePath);

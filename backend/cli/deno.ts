@@ -12,6 +12,7 @@ import { validateClaudeCli } from "./validation.ts";
 import { logger, setupLogger } from "../utils/logger.ts";
 import { dirname, fromFileUrl, join } from "@std/path";
 import { exit } from "../utils/os.ts";
+import { exists } from "../utils/fs.ts";
 
 async function main(runtime: DenoRuntime) {
   // Parse CLI arguments
@@ -24,17 +25,25 @@ async function main(runtime: DenoRuntime) {
     logger.cli.info("🐛 Debug mode enabled");
   }
 
-  // Validate Claude CLI availability and get the detected CLI path
-  const cliPath = await validateClaudeCli(runtime, args.claudePath);
+  const cliPath = args.claudePath
+    ? await validateClaudeCli(runtime, args.claudePath)
+    : undefined;
+  if (!cliPath) {
+    logger.cli.info("Using the Claude Code binary bundled with Agent SDK");
+  }
 
   // Create application
   const __dirname = dirname(fromFileUrl(import.meta.url));
-  const staticPath = join(__dirname, "../dist/static");
+  const staticCandidate = join(__dirname, "../dist/static");
+  const staticPath = (await exists(staticCandidate))
+    ? staticCandidate
+    : undefined;
 
   const app = createApp(runtime, {
     debugMode: args.debug,
     staticPath,
     cliPath: cliPath,
+    fdeSuitePluginDir: args.fdeSuitePluginDir,
   });
 
   // Start server (only show this message when everything is ready)

@@ -13,7 +13,9 @@ import { validateClaudeCli } from "./validation.ts";
 import { setupLogger, logger } from "../utils/logger.ts";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
 import { exit } from "../utils/os.ts";
+import { exists } from "../utils/fs.ts";
 import {
   InMemorySessionStore,
   type SessionStore,
@@ -33,14 +35,36 @@ async function main(runtime: NodeRuntime) {
     logger.cli.info("🐛 Debug mode enabled");
   }
 
-  // Validate Claude CLI availability and get the detected CLI path
-  const cliPath = await validateClaudeCli(runtime, args.claudePath);
+  // The Agent SDK ships a matching Claude Code binary. Only override it when
+  // the operator explicitly supplies a compatible executable.
+  const cliPath = args.claudePath
+    ? await validateClaudeCli(runtime, args.claudePath)
+    : undefined;
+  if (!cliPath) {
+    logger.cli.info("Using the Claude Code binary bundled with Agent SDK");
+  }
+  const fdeSuitePluginDir = await realpath(args.fdeSuitePluginDir);
+  const pluginManifest = JSON.parse(
+    await readFile(
+      join(fdeSuitePluginDir, ".claude-plugin", "plugin.json"),
+      "utf8",
+    ),
+  ) as { name?: unknown };
+  if (pluginManifest.name !== "fde-suite") {
+    throw new Error(`Expected fde-suite plugin at ${fdeSuitePluginDir}`);
+  }
 
   // Use absolute path for static files (supported in @hono/node-server v1.17.0+)
   // Node.js 20.11.0+ compatible with fallback for older versions
   const __dirname =
     import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
-  const staticPath = join(__dirname, "../static");
+  const bundledStaticPath = join(__dirname, "../static");
+  const developmentStaticPath = join(__dirname, "../../frontend/dist");
+  const staticPath = (await exists(bundledStaticPath))
+    ? bundledStaticPath
+    : (await exists(developmentStaticPath))
+      ? developmentStaticPath
+      : undefined;
   const runStore = new MemoryRunStore();
   const databaseUrl =
     process.env.CLAUDE_CODE_BACKEND_SESSION_STORE_DATABASE_URL;
@@ -73,6 +97,7 @@ async function main(runtime: NodeRuntime) {
     debugMode: args.debug,
     staticPath,
     cliPath,
+    fdeSuitePluginDir,
     runStore,
     sessionStore,
   });

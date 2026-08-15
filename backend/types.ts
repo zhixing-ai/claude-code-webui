@@ -10,7 +10,8 @@ import type { SessionStore } from "@anthropic-ai/claude-agent-sdk";
 export interface AppConfig {
   debugMode: boolean;
   runtime: Runtime;
-  cliPath: string; // Path to actual CLI script detected by validateClaudeCli
+  cliPath?: string; // Explicit compatible Claude Code override; SDK binary is the default
+  fdeSuitePluginDir?: string;
   runStore?: RunStateStore;
   sessionStore?: SessionStore;
 }

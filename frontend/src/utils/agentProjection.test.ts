@@ -16,19 +16,19 @@ describe("agentProjection", () => {
     const state = reduce([
       {
         agentRunId: "definition:fde-evaluator",
-        agentType: "fde-evaluator",
+        agentType: "fde-suite:fde-evaluator",
         status: "registered",
       },
       {
         agentRunId: "tool:tool-1",
-        agentType: "fde-evaluator",
+        agentType: "fde-suite:fde-evaluator",
         status: "queued",
         toolUseId: "tool-1",
         description: "Score a case",
       },
       {
         agentRunId: "task:task-1",
-        agentType: "fde-evaluator",
+        agentType: "fde-suite:fde-evaluator",
         status: "running",
         taskId: "task-1",
         toolUseId: "tool-1",
@@ -47,7 +47,7 @@ describe("agentProjection", () => {
     expect(selectAgentRuns(state)).toEqual([
       expect.objectContaining({
         id: "tool:tool-1",
-        agentType: "fde-evaluator",
+        agentType: "fde-suite:fde-evaluator",
         status: "completed",
         taskId: "task-1",
         description: "Score a case",

@@ -46,9 +46,9 @@ describe("simulation workflow", () => {
 
   it("requires the exact isolated agents in the run prompt", () => {
     const prompt = simulationSystemPrompt({ action: "run", scenario });
-    expect(prompt).toContain("fde-customer-simulator");
-    expect(prompt).toContain("fde-business-agent");
-    expect(prompt).toContain("fde-evaluator");
+    expect(prompt).toContain("fde-suite:fde-customer-simulator");
+    expect(prompt).toContain("fde-suite:fde-business-agent");
+    expect(prompt).toContain("fde-suite:fde-evaluator");
     expect(prompt).toContain("不得给 expectedBehaviors、passCriteria");
   });
 

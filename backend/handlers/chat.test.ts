@@ -12,14 +12,11 @@ type MockClaudeCode = {
   InMemorySessionStore: new () => object;
 };
 
-vi.mock(
-  "@anthropic-ai/claude-agent-sdk",
-  (): MockClaudeCode => ({
-    getSessionMessages: vi.fn(),
-    query: vi.fn(),
-    InMemorySessionStore: class {},
-  }),
-);
+vi.mock("@anthropic-ai/claude-agent-sdk", (): MockClaudeCode => ({
+  getSessionMessages: vi.fn(),
+  query: vi.fn(),
+  InMemorySessionStore: class {},
+}));
 
 // Mock logger
 vi.mock("../utils/logger", () => ({
@@ -64,6 +61,38 @@ describe("Chat Handler - Permission Mode Tests", () => {
   });
 
   describe("Permission Mode Parameter Handling", () => {
+    it("uses the Agent SDK bundled Claude Code binary by default", async () => {
+      const chatRequest: ChatRequest = {
+        message: "Test bundled binary",
+        requestId: "test-bundled-binary",
+      };
+      delete (mockContext as any).var.config.cliPath;
+      mockContext.req.json = vi.fn().mockResolvedValue(chatRequest);
+      mockQuery.mockReturnValue({
+        [Symbol.asyncIterator]: async function* () {
+          yield {
+            type: "assistant",
+            message: { content: [{ type: "text", text: "Response" }] },
+            session_id: "test-session",
+            parent_tool_use_id: null,
+          } as any;
+        },
+      } as any);
+
+      await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+
+      expect(mockQuery).toHaveBeenCalledWith({
+        prompt: "Test bundled binary",
+        options: expect.not.objectContaining({
+          pathToClaudeCodeExecutable: expect.anything(),
+        }),
+      });
+    });
+
     it("should pass permissionMode 'plan' to Claude SDK", async () => {
       const chatRequest: ChatRequest = {
         message: "Test message",
@@ -502,7 +531,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
       expect(body).toContain('"type":"done"');
     });
 
-    it("does not retry the prompt when session compaction does not complete", async () => {
+    it("reports the SDK compaction error and does not retry the prompt", async () => {
       const sessionId = "33333333-3333-4333-8333-333333333333";
       mockContext.req.json = vi.fn().mockResolvedValue({
         message: "Continue the builder work",
@@ -534,10 +563,11 @@ describe("Chat Handler - Permission Mode Tests", () => {
         .mockReturnValueOnce({
           [Symbol.asyncIterator]: async function* () {
             yield {
-              type: "result",
-              subtype: "error_during_execution",
-              is_error: true,
-              errors: ["Prompt is too long"],
+              type: "system",
+              subtype: "status",
+              status: null,
+              compact_result: "failed",
+              compact_error: "Enable 1M context and retry",
               session_id: sessionId,
             } as any;
           },
@@ -551,7 +581,7 @@ describe("Chat Handler - Permission Mode Tests", () => {
       const body = await new Response(response.body).text();
 
       expect(mockQuery).toHaveBeenCalledTimes(2);
-      expect(body).toContain("Claude Code did not complete session compaction");
+      expect(body).toContain("Enable 1M context and retry");
       expect(body).not.toContain('"type":"done"');
     });
 
@@ -1213,6 +1243,42 @@ describe("Chat Handler - Permission Mode Tests", () => {
 });
 
 describe("Chat Handler - Simulation workflow", () => {
+  it("fails the run when the configured plugin path is not loaded", async () => {
+    mockQuery.mockReturnValue({
+      [Symbol.asyncIterator]: async function* () {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "wrong-plugin-session",
+          plugins: [{ name: "fde-suite", path: "/wrong/fde-suite" }],
+        } as any;
+      },
+    } as any);
+    const context = {
+      req: {
+        json: vi.fn().mockResolvedValue({
+          message: "Start",
+          requestId: "wrong-plugin-run",
+        }),
+      },
+      var: {
+        config: {
+          cliPath: "/path/to/claude-cli",
+          fdeSuitePluginDir: "/Users/shaobo/Workspace/zhixing/fde-suite",
+        },
+      },
+    } as unknown as Context;
+
+    const response = await handleChatRequest(
+      context,
+      new Map<string, AbortController>(),
+      new PendingInteractions(),
+    );
+    const body = await new Response(response.body).text();
+
+    expect(body).toContain("FDE Suite plugin failed to load");
+  });
+
   it("adds the workflow prompt and emits structured simulation events", async () => {
     vi.clearAllMocks();
     const scenario = {
@@ -1236,6 +1302,22 @@ describe("Chat Handler - Simulation workflow", () => {
     mockQuery.mockReturnValue({
       [Symbol.asyncIterator]: async function* () {
         yield {
+          type: "system",
+          subtype: "init",
+          session_id: "simulation-session",
+          plugins: [
+            {
+              name: "fde-suite",
+              path: "/Users/shaobo/Workspace/zhixing/fde-suite",
+            },
+          ],
+          agents: [
+            "fde-suite:fde-builder",
+            "fde-suite:fde-scenario-designer",
+            "fde-suite:fde-evaluator",
+          ],
+        } as any;
+        yield {
           type: "result",
           subtype: "success",
           structured_output: { scenarios: [scenario] },
@@ -1251,7 +1333,12 @@ describe("Chat Handler - Simulation workflow", () => {
           simulation: { action: "design" },
         }),
       },
-      var: { config: { cliPath: "/path/to/claude-cli" } },
+      var: {
+        config: {
+          cliPath: "/path/to/claude-cli",
+          fdeSuitePluginDir: "/Users/shaobo/Workspace/zhixing/fde-suite",
+        },
+      },
     } as unknown as Context;
 
     const response = await handleChatRequest(
@@ -1265,7 +1352,13 @@ describe("Chat Handler - Simulation workflow", () => {
       prompt: "生成模拟测试场景",
       options: expect.objectContaining({
         tools: ["Task", "Agent", "StructuredOutput", "Read", "Glob", "Grep"],
-        allowedTools: ["Task", "Agent", "StructuredOutput"],
+        plugins: [
+          {
+            type: "local",
+            path: "/Users/shaobo/Workspace/zhixing/fde-suite",
+          },
+        ],
+        agent: "fde-suite:fde-builder",
         outputFormat: expect.objectContaining({ type: "json_schema" }),
         systemPrompt: expect.objectContaining({
           append: expect.stringContaining("fde-scenario-designer"),
@@ -1276,6 +1369,14 @@ describe("Chat Handler - Simulation workflow", () => {
     expect(body).toContain('"kind":"scenarios_generated"');
     const options = mockQuery.mock.calls[0]?.[0].options;
     if (!options) throw new Error("Expected query options");
+    expect(options.allowedTools).toBeUndefined();
+    await expect(
+      options.canUseTool?.(
+        "Agent",
+        { description: "Design scenarios" },
+        {} as any,
+      ),
+    ).resolves.toMatchObject({ behavior: "allow" });
     await expect(
       options.canUseTool?.("Read", { file_path: "merchant.md" }, {
         agentID: "scenario-agent",
