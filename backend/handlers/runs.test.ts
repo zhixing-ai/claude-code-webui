@@ -33,9 +33,14 @@ describe("create run session identity", () => {
       context({ message: "start", systemPrompt: " " }),
       runs,
     );
+    const invalidMode = await handleCreateRunRequest(
+      context({ message: "start", runMode: "customer" }),
+      runs,
+    );
 
     expect(ambiguous).toMatchObject({ status: 400 });
     expect(invalid).toMatchObject({ status: 400 });
     expect(invalidPrompt).toMatchObject({ status: 400 });
+    expect(invalidMode).toMatchObject({ status: 400 });
   });
 });

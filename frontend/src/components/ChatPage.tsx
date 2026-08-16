@@ -33,7 +33,6 @@ import {
   getProjectsUrl,
   getRunEventsUrl,
   getRunUrl,
-  getRunsUrl,
 } from "../config/api";
 import { KEYBOARD_SHORTCUTS } from "../utils/constants";
 import { normalizeWindowsPath } from "../utils/pathUtils";
@@ -183,12 +182,19 @@ export function ChatPage() {
         });
         return;
       }
+      const completedResults =
+        event.kind === "simulation_batch_completed"
+          ? event.results
+          : [event.result];
       setSimulation((current) => {
+        const completedIds = new Set(
+          completedResults.map((result) => result.scenarioId),
+        );
         const runningScenarioIds = current.runningScenarioIds.filter(
-          (id) => id !== event.result.scenarioId,
+          (id) => !completedIds.has(id),
         );
         const scenarioErrors = { ...current.scenarioErrors };
-        delete scenarioErrors[event.result.scenarioId];
+        for (const id of completedIds) delete scenarioErrors[id];
         return {
           ...current,
           status: runningScenarioIds.length > 0 ? "running" : "ready",
@@ -197,7 +203,9 @@ export function ChatPage() {
           error: undefined,
           results: {
             ...current.results,
-            [event.result.scenarioId]: event.result,
+            ...Object.fromEntries(
+              completedResults.map((result) => [result.scenarioId, result]),
+            ),
           },
         };
       });
@@ -528,15 +536,13 @@ export function ChatPage() {
     });
   }, [isLoading, sendMessage]);
 
-  const runSimulationScenario = useCallback(
-    async (scenario: SimulationScenario) => {
-      // ponytail: parallel run IDs live in this page; persist them when refresh recovery is required.
+  const handleRunScenario = useCallback(
+    (scenario: SimulationScenario) => {
+      if (isLoading) return;
       setSimulation((current) => ({
         ...current,
         status: "running",
-        runningScenarioIds: current.runningScenarioIds.includes(scenario.id)
-          ? current.runningScenarioIds
-          : [...current.runningScenarioIds, scenario.id],
+        runningScenarioIds: [scenario.id],
         results: Object.fromEntries(
           Object.entries(current.results).filter(([id]) => id !== scenario.id),
         ),
@@ -547,107 +553,37 @@ export function ChatPage() {
         ),
         error: undefined,
       }));
-
-      try {
-        const createResponse = await fetch(getRunsUrl(), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: `开始模拟：${scenario.title}`,
-            newSessionId: crypto.randomUUID(),
-            ...(workingDirectory ? { workingDirectory } : {}),
-            permissionMode,
-            simulation: { action: "run", scenario },
-          }),
-        });
-        if (!createResponse.ok) {
-          throw new Error(`Could not start run: ${createResponse.status}`);
-        }
-        const { runId } = (await createResponse.json()) as { runId?: string };
-        if (!runId) throw new Error("Run response did not include an ID");
-
-        let response = await fetch(getRunEventsUrl(runId));
-        if (!response.ok) {
-          throw new Error(`Could not open run stream: ${response.status}`);
-        }
-        let lastSequence = 0;
-        let terminal = false;
-        let resultReceived = false;
-        let runError: string | undefined;
-
-        for (let reconnects = 0; !terminal; reconnects += 1) {
-          await consumeStream(response, (line) => {
-            if (!line.trim()) return;
-            const envelope = JSON.parse(line) as {
-              type?: string;
-              sequence?: number;
-              error?: string;
-              event?: AgentLifecycleEvent | SimulationLifecycleEvent;
-            };
-            if (typeof envelope.sequence === "number") {
-              lastSequence = Math.max(lastSequence, envelope.sequence);
-            }
-            if (envelope.type === "agent_event" && envelope.event) {
-              handleAgentEvent(envelope.event as AgentLifecycleEvent);
-            } else if (envelope.type === "simulation_event" && envelope.event) {
-              resultReceived = true;
-              handleSimulationEvent(envelope.event as SimulationLifecycleEvent);
-            } else if (envelope.type === "error") {
-              runError = envelope.error || "模拟运行失败";
-            } else if (envelope.type === "aborted") {
-              runError = "模拟运行已停止";
-            }
-            terminal = ["done", "error", "aborted"].includes(
-              envelope.type || "",
-            );
-          });
-          if (terminal) break;
-          if (reconnects >= 3) {
-            throw new Error("Run stream ended before completion");
-          }
-          response = await fetch(getRunEventsUrl(runId, lastSequence));
-          if (!response.ok) {
-            throw new Error(`Could not reconnect to run: ${response.status}`);
-          }
-        }
-
-        if (runError) throw new Error(runError);
-        if (!resultReceived) throw new Error("Agent 未返回有效的结构化结果");
-      } catch (error) {
-        console.error(`Simulation failed for ${scenario.id}:`, error);
-        setSimulation((current) => {
-          const runningScenarioIds = current.runningScenarioIds.filter(
-            (id) => id !== scenario.id,
-          );
-          return {
-            ...current,
-            status: runningScenarioIds.length > 0 ? "running" : "ready",
-            runningScenarioIds,
-            scenarioErrors: {
-              ...current.scenarioErrors,
-              [scenario.id]: "该场景模拟失败，请单独重试。",
-            },
-          };
-        });
-      }
+      void sendMessage(
+        `开始模拟：${scenario.title}`,
+        undefined,
+        false,
+        undefined,
+        {
+          action: "run",
+          scenario,
+        },
+      );
     },
-    [handleAgentEvent, handleSimulationEvent, permissionMode, workingDirectory],
-  );
-
-  const handleRunScenario = useCallback(
-    (scenario: SimulationScenario) => {
-      if (isLoading) return;
-      void runSimulationScenario(scenario);
-    },
-    [isLoading, runSimulationScenario],
+    [isLoading, sendMessage],
   );
 
   const handleRunAllScenarios = useCallback(
     (scenarios: SimulationScenario[]) => {
       if (isLoading) return;
-      for (const scenario of scenarios) void runSimulationScenario(scenario);
+      setSimulation((current) => ({
+        ...current,
+        status: "running",
+        runningScenarioIds: scenarios.map((scenario) => scenario.id),
+        results: {},
+        scenarioErrors: {},
+        error: undefined,
+      }));
+      void sendMessage("全部并行测试", undefined, false, undefined, {
+        action: "run_all",
+        scenarios,
+      });
     },
-    [isLoading, runSimulationScenario],
+    [isLoading, sendMessage],
   );
 
   useEffect(() => {
@@ -734,6 +670,16 @@ export function ChatPage() {
           scenarios: [run.request.simulation.scenario],
           results: {},
           runningScenarioIds: [run.request.simulation.scenario.id],
+          scenarioErrors: {},
+        });
+      } else if (run.request.simulation?.action === "run_all") {
+        setSimulation({
+          status: "running",
+          scenarios: run.request.simulation.scenarios,
+          results: {},
+          runningScenarioIds: run.request.simulation.scenarios.map(
+            (scenario) => scenario.id,
+          ),
           scenarioErrors: {},
         });
       }

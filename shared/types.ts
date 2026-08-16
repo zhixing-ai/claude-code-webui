@@ -82,7 +82,10 @@ export interface SimulationScenario {
 
 export type SimulationCommand =
   | { action: "design" }
-  | { action: "run"; scenario: SimulationScenario };
+  | { action: "run"; scenario: SimulationScenario }
+  | { action: "run_all"; scenarios: SimulationScenario[] };
+
+export type RunMode = "builder" | "sandbox_test";
 
 export type SimulationVerdict = "passed" | "partial" | "failed";
 
@@ -109,7 +112,8 @@ export interface SimulationRunResult {
 
 export type SimulationLifecycleEvent =
   | { kind: "scenarios_generated"; scenarios: SimulationScenario[] }
-  | { kind: "simulation_completed"; result: SimulationRunResult };
+  | { kind: "simulation_completed"; result: SimulationRunResult }
+  | { kind: "simulation_batch_completed"; results: SimulationRunResult[] };
 
 export interface SimulationEventStreamResponse {
   type: "simulation_event";
@@ -152,6 +156,7 @@ export interface CreateRunRequest {
   additionalDirectories?: string[];
   systemPrompt?: string;
   permissionMode?: "default" | "plan" | "acceptEdits" | "bypassPermissions";
+  runMode?: RunMode;
   simulation?: SimulationCommand;
 }
 
@@ -169,6 +174,7 @@ export interface ChatRequest {
   additionalDirectories?: string[];
   systemPrompt?: string;
   permissionMode?: "default" | "plan" | "acceptEdits" | "bypassPermissions";
+  runMode?: RunMode;
   simulation?: SimulationCommand;
 }
 

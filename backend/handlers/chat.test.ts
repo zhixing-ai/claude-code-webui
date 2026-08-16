@@ -1163,6 +1163,48 @@ describe("Chat Handler - Permission Mode Tests", () => {
       });
     });
 
+    it("auto-allows ordinary tools when bypass permissions reaches the callback", async () => {
+      let permissionResult: unknown;
+      mockQuery.mockImplementation(
+        ({ options }: any) =>
+          ({
+            [Symbol.asyncIterator]: async function* () {
+              permissionResult = await options.canUseTool(
+                "Edit",
+                { file_path: "SKILL.md" },
+                {
+                  signal: options.abortController.signal,
+                  toolUseID: "tool-1",
+                  requestId: "control-1",
+                },
+              );
+              yield {
+                type: "result",
+                subtype: "success",
+                session_id: "session-1",
+              } as any;
+            },
+          }) as any,
+      );
+      mockContext.req.json = vi.fn().mockResolvedValue({
+        message: "Edit the skill",
+        requestId: "request-1",
+        permissionMode: "bypassPermissions",
+      });
+
+      const response = await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+      await response.text();
+
+      expect(permissionResult).toEqual({
+        behavior: "allow",
+        updatedInput: { file_path: "SKILL.md" },
+      });
+    });
+
     it("denies invalid AskUserQuestion input", async () => {
       let permissionResult: unknown;
       mockQuery.mockImplementation(
@@ -1243,27 +1285,33 @@ describe("Chat Handler - Permission Mode Tests", () => {
 });
 
 describe("Chat Handler - Simulation workflow", () => {
-  it("fails the run when the configured plugin path is not loaded", async () => {
+  it("loads the plugin without the builder agent in sandbox test mode", async () => {
+    vi.clearAllMocks();
     mockQuery.mockReturnValue({
       [Symbol.asyncIterator]: async function* () {
         yield {
           type: "system",
           subtype: "init",
-          session_id: "wrong-plugin-session",
-          plugins: [{ name: "fde-suite", path: "/wrong/fde-suite" }],
+          session_id: "sandbox-session",
+          plugins: [
+            {
+              name: "fde-suite",
+              path: "/Users/shaobo/Workspace/zhixing/fde-suite",
+            },
+          ],
         } as any;
       },
     } as any);
     const context = {
       req: {
         json: vi.fn().mockResolvedValue({
-          message: "Start",
-          requestId: "wrong-plugin-run",
+          message: "你好",
+          requestId: "sandbox-run",
+          runMode: "sandbox_test",
         }),
       },
       var: {
         config: {
-          cliPath: "/path/to/claude-cli",
           fdeSuitePluginDir: "/Users/shaobo/Workspace/zhixing/fde-suite",
         },
       },
@@ -1274,9 +1322,20 @@ describe("Chat Handler - Simulation workflow", () => {
       new Map<string, AbortController>(),
       new PendingInteractions(),
     );
-    const body = await new Response(response.body).text();
+    await response.text();
 
-    expect(body).toContain("FDE Suite plugin failed to load");
+    expect(mockQuery).toHaveBeenCalledWith({
+      prompt: "你好",
+      options: expect.objectContaining({
+        plugins: [
+          {
+            type: "local",
+            path: "/Users/shaobo/Workspace/zhixing/fde-suite",
+          },
+        ],
+      }),
+    });
+    expect(mockQuery.mock.calls[0]?.[0].options?.agent).toBeUndefined();
   });
 
   it("adds the workflow prompt and emits structured simulation events", async () => {
@@ -1358,7 +1417,6 @@ describe("Chat Handler - Simulation workflow", () => {
             path: "/Users/shaobo/Workspace/zhixing/fde-suite",
           },
         ],
-        agent: "fde-suite:fde-builder",
         outputFormat: expect.objectContaining({ type: "json_schema" }),
         systemPrompt: expect.objectContaining({
           append: expect.stringContaining("fde-scenario-designer"),
@@ -1369,6 +1427,7 @@ describe("Chat Handler - Simulation workflow", () => {
     expect(body).toContain('"kind":"scenarios_generated"');
     const options = mockQuery.mock.calls[0]?.[0].options;
     if (!options) throw new Error("Expected query options");
+    expect(options.agent).toBeUndefined();
     expect(options.allowedTools).toBeUndefined();
     await expect(
       options.canUseTool?.(

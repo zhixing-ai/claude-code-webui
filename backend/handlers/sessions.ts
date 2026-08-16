@@ -70,6 +70,9 @@ export async function handleResumeSessionRequest(
   if (
     typeof body.message !== "string" ||
     !body.message.trim() ||
+    (body.runMode !== undefined &&
+      body.runMode !== "builder" &&
+      body.runMode !== "sandbox_test") ||
     (body.systemPrompt !== undefined &&
       (typeof body.systemPrompt !== "string" || !body.systemPrompt.trim())) ||
     (body.simulation !== undefined && !simulation)

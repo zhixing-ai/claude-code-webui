@@ -14,6 +14,7 @@ const UUID =
 function readCreateRunRequest(value: unknown): CreateRunRequest | null {
   const request = value as {
     message?: unknown;
+    runMode?: unknown;
     systemPrompt?: unknown;
     simulation?: unknown;
   };
@@ -23,6 +24,9 @@ function readCreateRunRequest(value: unknown): CreateRunRequest | null {
     Array.isArray(value) ||
     typeof request.message !== "string" ||
     !request.message.trim() ||
+    (request.runMode !== undefined &&
+      request.runMode !== "builder" &&
+      request.runMode !== "sandbox_test") ||
     (request.systemPrompt !== undefined &&
       (typeof request.systemPrompt !== "string" ||
         !request.systemPrompt.trim()))

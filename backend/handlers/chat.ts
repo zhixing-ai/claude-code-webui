@@ -18,11 +18,7 @@ import type { RunStateStore, StoredRunEvent } from "../state/types.ts";
 import { MemoryRunStore } from "../state/memory.ts";
 import { logger } from "../utils/logger.ts";
 import { PendingInteractions } from "./interactions.ts";
-import {
-  FDE_MAIN_AGENT,
-  FDE_PLUGIN_NAME,
-  projectAgentEvents,
-} from "../agents.ts";
+import { FDE_MAIN_AGENT, projectAgentEvents } from "../agents.ts";
 import {
   projectSimulationEvent,
   readSimulationCommand,
@@ -102,18 +98,6 @@ function selectCompactionAnchors(messages: unknown[]): string[] {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function hasPlugin(message: SDKMessage, name: string, path: string): boolean {
-  if (!isObject(message) || message.type !== "system") return false;
-  const plugins = (message as Record<string, unknown>).plugins;
-  return (
-    Array.isArray(plugins) &&
-    plugins.some(
-      (plugin) =>
-        isObject(plugin) && plugin.name === name && plugin.path === path,
-    )
-  );
 }
 
 function readOption(value: unknown): AskUserQuestionOption | null {
@@ -283,7 +267,9 @@ export class ChatRunManager {
       ...(this.fdeSuitePluginDir
         ? {
             plugins: [{ type: "local" as const, path: this.fdeSuitePluginDir }],
-            agent: FDE_MAIN_AGENT,
+            ...(request.runMode === "sandbox_test" || request.simulation
+              ? {}
+              : { agent: FDE_MAIN_AGENT }),
           }
         : {}),
       ...(request.simulation
@@ -364,6 +350,10 @@ export class ChatRunManager {
           return pending.response;
         }
 
+        if (request.permissionMode === "bypassPermissions") {
+          return { behavior: "allow", updatedInput: input };
+        }
+
         const pending = this.interactions.createPermission(
           request.requestId,
           toolName,
@@ -400,15 +390,6 @@ export class ChatRunManager {
 
     const forward = (sdkMessage: SDKMessage) => {
       logger.chat.debug("Claude SDK Message: {sdkMessage}", { sdkMessage });
-      if (
-        this.fdeSuitePluginDir &&
-        isObject(sdkMessage) &&
-        sdkMessage.type === "system" &&
-        sdkMessage.subtype === "init" &&
-        !hasPlugin(sdkMessage, FDE_PLUGIN_NAME, this.fdeSuitePluginDir)
-      ) {
-        throw new Error("FDE Suite plugin failed to load");
-      }
       const sessionId = readSessionId(sdkMessage);
       if (
         request.newSessionId &&
@@ -638,6 +619,9 @@ function readChatRequest(value: unknown): ChatRequest | null {
     !value.message.trim() ||
     typeof value.requestId !== "string" ||
     !value.requestId ||
+    (value.runMode !== undefined &&
+      value.runMode !== "builder" &&
+      value.runMode !== "sandbox_test") ||
     (value.systemPrompt !== undefined &&
       (typeof value.systemPrompt !== "string" || !value.systemPrompt.trim()))
   ) {

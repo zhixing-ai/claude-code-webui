@@ -36,6 +36,12 @@ describe("simulation workflow", () => {
       scenario,
     });
     expect(
+      readSimulationCommand({ action: "run_all", scenarios: [scenario] }),
+    ).toEqual({
+      action: "run_all",
+      scenarios: [scenario],
+    });
+    expect(
       readSimulationCommand({ action: "run", scenario: {} }),
     ).toBeUndefined();
     expect(simulationOutputFormat({ action: "design" })).toMatchObject({
@@ -50,6 +56,9 @@ describe("simulation workflow", () => {
     expect(prompt).toContain("fde-suite:fde-business-agent");
     expect(prompt).toContain("fde-suite:fde-evaluator");
     expect(prompt).toContain("不得给 expectedBehaviors、passCriteria");
+    expect(
+      simulationSystemPrompt({ action: "run_all", scenarios: [scenario] }),
+    ).toContain("同一条 assistant 消息中同时发出");
   });
 
   it("projects valid scenario and run results from SDK structured output", () => {
@@ -86,5 +95,12 @@ describe("simulation workflow", () => {
         structured_output: result,
       } as SDKMessage),
     ).toEqual({ kind: "simulation_completed", result });
+    expect(
+      projectSimulationEvent({ action: "run_all", scenarios: [scenario] }, {
+        type: "result",
+        subtype: "success",
+        structured_output: { results: [result] },
+      } as SDKMessage),
+    ).toEqual({ kind: "simulation_batch_completed", results: [result] });
   });
 });
