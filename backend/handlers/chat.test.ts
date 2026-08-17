@@ -1539,7 +1539,7 @@ describe("Chat Handler - Simulation workflow", () => {
     expect(mockQuery.mock.calls[0]?.[0].options?.hooks).toBeUndefined();
   });
 
-  it("loads the plugin without the builder agent in sandbox test mode", async () => {
+  it("isolates sandbox test mode from the Builder plugin and filesystem", async () => {
     vi.clearAllMocks();
     mockQuery.mockReturnValue({
       [Symbol.asyncIterator]: async function* () {
@@ -1547,12 +1547,7 @@ describe("Chat Handler - Simulation workflow", () => {
           type: "system",
           subtype: "init",
           session_id: "sandbox-session",
-          plugins: [
-            {
-              name: "fde-suite",
-              path: "/Users/shaobo/Workspace/zhixing/fde-suite",
-            },
-          ],
+          plugins: [],
         } as any;
       },
     } as any);
@@ -1562,6 +1557,7 @@ describe("Chat Handler - Simulation workflow", () => {
           message: "你好",
           requestId: "sandbox-run",
           runMode: "sandbox_test",
+          workingDirectory: "/home/user/workspace/chat",
           // Product mode is authoritative: even an obsolete or malformed
           // caller preference must not re-enable approval cards.
           permissionMode: "default",
@@ -1581,26 +1577,22 @@ describe("Chat Handler - Simulation workflow", () => {
     );
     await response.text();
 
+    const options = mockQuery.mock.calls[0]?.[0].options;
     expect(mockQuery).toHaveBeenCalledWith({
       prompt: "你好",
-      options: expect.objectContaining({
-        plugins: [
-          {
-            type: "local",
-            path: "/Users/shaobo/Workspace/zhixing/fde-suite",
-          },
-        ],
-      }),
+      options: expect.any(Object),
     });
-    expect(mockQuery.mock.calls[0]?.[0].options?.agent).toBeUndefined();
-    expect(mockQuery.mock.calls[0]?.[0].options).toMatchObject({
+    expect(options?.plugins).toBeUndefined();
+    expect(options?.agent).toBeUndefined();
+    expect(options).toMatchObject({
+      cwd: "/home/user/workspace/chat",
       permissionMode: "default",
+      settingSources: ["project"],
+      skills: ["private-domain-sales"],
+      tools: ["Skill", "Read", "Glob", "Grep"],
     });
-    expect(
-      mockQuery.mock.calls[0]?.[0].options?.allowDangerouslySkipPermissions,
-    ).toBeUndefined();
-    const sandboxHook =
-      mockQuery.mock.calls[0]?.[0].options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
+    expect(options?.allowDangerouslySkipPermissions).toBeUndefined();
+    const sandboxHook = options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
     await expect(
       sandboxHook?.(
         {
@@ -1613,7 +1605,38 @@ describe("Chat Handler - Simulation workflow", () => {
         {} as any,
       ),
     ).resolves.toMatchObject({
+      hookSpecificOutput: { permissionDecision: "deny" },
+    });
+    await expect(
+      sandboxHook?.(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Read",
+          tool_input: {
+            file_path:
+              "/home/user/workspace/chat/.claude/skills/private-domain-sales/SKILL.md",
+          },
+          tool_use_id: "tool-read-skill",
+        } as any,
+        "tool-read-skill",
+        {} as any,
+      ),
+    ).resolves.toMatchObject({
       hookSpecificOutput: { permissionDecision: "allow" },
+    });
+    await expect(
+      sandboxHook?.(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Read",
+          tool_input: { file_path: "/system/fde-suite/skills/fde/SKILL.md" },
+          tool_use_id: "tool-read-fde",
+        } as any,
+        "tool-read-fde",
+        {} as any,
+      ),
+    ).resolves.toMatchObject({
+      hookSpecificOutput: { permissionDecision: "deny" },
     });
   });
 

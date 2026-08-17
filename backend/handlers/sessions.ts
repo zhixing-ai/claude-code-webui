@@ -10,7 +10,7 @@ import type {
   CreateRunResponse,
 } from "../../shared/types.ts";
 import { readSimulationCommand } from "../simulation.ts";
-import { ChatRunManager } from "./chat.ts";
+import { ChatRunManager, SANDBOX_TEST_WORKING_DIRECTORY } from "./chat.ts";
 
 export async function handleSessionsRequest(
   c: Context,
@@ -75,7 +75,11 @@ export async function handleResumeSessionRequest(
       body.runMode !== "sandbox_test") ||
     (body.systemPrompt !== undefined &&
       (typeof body.systemPrompt !== "string" || !body.systemPrompt.trim())) ||
-    (body.simulation !== undefined && !simulation)
+    (body.simulation !== undefined && !simulation) ||
+    (body.runMode === "sandbox_test" &&
+      (simulation ||
+        body.workingDirectory !== SANDBOX_TEST_WORKING_DIRECTORY ||
+        body.additionalDirectories !== undefined))
   ) {
     return c.json(
       { error: "Message and system prompt must be non-empty strings" },

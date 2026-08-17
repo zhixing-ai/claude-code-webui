@@ -6,7 +6,11 @@ import type {
 } from "../../shared/types.ts";
 import type { RunStateStore } from "../state/types.ts";
 import { readSimulationCommand } from "../simulation.ts";
-import { ChatRunManager, streamResponse } from "./chat.ts";
+import {
+  ChatRunManager,
+  SANDBOX_TEST_WORKING_DIRECTORY,
+  streamResponse,
+} from "./chat.ts";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -38,6 +42,15 @@ function readCreateRunRequest(value: unknown): CreateRunRequest | null {
       ? undefined
       : readSimulationCommand(request.simulation);
   if (request.simulation !== undefined && !simulation) return null;
+  if (
+    request.runMode === "sandbox_test" &&
+    (simulation ||
+      (value as CreateRunRequest).workingDirectory !==
+        SANDBOX_TEST_WORKING_DIRECTORY ||
+      (value as CreateRunRequest).additionalDirectories !== undefined)
+  ) {
+    return null;
+  }
   return {
     ...(value as CreateRunRequest),
     ...(simulation ? { simulation } : {}),

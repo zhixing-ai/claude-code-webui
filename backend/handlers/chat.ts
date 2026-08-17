@@ -8,6 +8,7 @@ import {
   type SessionStore,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { Context } from "hono";
+import { posix } from "node:path";
 import type {
   AskUserQuestionItem,
   AskUserQuestionOption,
@@ -44,6 +45,25 @@ type ActiveRun = {
 
 const CONTEXT_LIMIT =
   /prompt is too long|exceeded model token limit|conversation too long/i;
+export const SANDBOX_TEST_WORKING_DIRECTORY = "/home/user/workspace/chat";
+const SANDBOX_TEST_SKILL = "private-domain-sales";
+
+function isSandboxTestToolAllowed(toolName: string, input: unknown): boolean {
+  if (!isObject(input)) return false;
+  if (toolName === "Skill") return input.skill === SANDBOX_TEST_SKILL;
+  if (toolName !== "Read" && toolName !== "Glob" && toolName !== "Grep") {
+    return false;
+  }
+  const pathKey = toolName === "Read" ? "file_path" : "path";
+  const requestedPath = input[pathKey];
+  if (requestedPath === undefined) return toolName !== "Read";
+  if (typeof requestedPath !== "string" || !requestedPath) return false;
+  const resolved = posix.resolve(SANDBOX_TEST_WORKING_DIRECTORY, requestedPath);
+  return (
+    resolved === SANDBOX_TEST_WORKING_DIRECTORY ||
+    resolved.startsWith(`${SANDBOX_TEST_WORKING_DIRECTORY}/`)
+  );
+}
 
 function isContextLimitMessage(message: unknown): boolean {
   if (!isObject(message)) return false;
@@ -261,6 +281,7 @@ export class ChatRunManager {
     );
 
     const simulation = request.simulation;
+    const sandboxTest = request.runMode === "sandbox_test";
     const simulationTracker = simulation
       ? new SimulationLifecycleTracker(simulation)
       : undefined;
@@ -301,8 +322,7 @@ export class ChatRunManager {
             return emitSimulation(event);
           })
         : undefined;
-    const managedProductRun =
-      request.runMode === "builder" || request.runMode === "sandbox_test";
+    const managedProductRun = request.runMode === "builder" || sandboxTest;
     const requestedAllowedTools = managedProductRun
       ? request.allowedTools?.filter(
           (tool) => !tool.startsWith("AskUserQuestion"),
@@ -331,6 +351,19 @@ export class ChatRunManager {
       ) {
         return {};
       }
+      if (
+        sandboxTest &&
+        !isSandboxTestToolAllowed(input.tool_name, input.tool_input)
+      ) {
+        return {
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason:
+              "Sandbox test tools are confined to the isolated chat workspace and tenant Skill",
+          },
+        };
+      }
       return {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
@@ -349,14 +382,22 @@ export class ChatRunManager {
       includePartialMessages: true,
       forwardSubagentText: true,
       agentProgressSummaries: true,
-      ...(this.fdeSuitePluginDir
+      ...(this.fdeSuitePluginDir && !sandboxTest
         ? {
             plugins: [{ type: "local" as const, path: this.fdeSuitePluginDir }],
-            ...(request.runMode === "sandbox_test"
-              ? {}
-              : { agent: FDE_MAIN_AGENT }),
+            agent: FDE_MAIN_AGENT,
           }
         : {}),
+      ...(sandboxTest
+        ? {
+            cwd: SANDBOX_TEST_WORKING_DIRECTORY,
+            settingSources: ["project" as const],
+            skills: [SANDBOX_TEST_SKILL],
+            tools: ["Skill", "Read", "Glob", "Grep"],
+          }
+        : request.workingDirectory
+          ? { cwd: request.workingDirectory }
+          : {}),
       ...(simulationReporter
         ? { mcpServers: { webui: simulationReporter } }
         : {}),
@@ -379,8 +420,7 @@ export class ChatRunManager {
       ...(request.newSessionId ? { sessionId: request.newSessionId } : {}),
       ...(request.sessionId ? { resume: request.sessionId } : {}),
       ...(allowedTools ? { allowedTools } : {}),
-      ...(request.workingDirectory ? { cwd: request.workingDirectory } : {}),
-      ...(request.additionalDirectories
+      ...(!sandboxTest && request.additionalDirectories
         ? { additionalDirectories: request.additionalDirectories }
         : {}),
       ...(appendedSystemPrompt
@@ -718,6 +758,14 @@ function readChatRequest(value: unknown): ChatRequest | null {
       ? undefined
       : readSimulationCommand(value.simulation);
   if (value.simulation !== undefined && !simulation) return null;
+  if (
+    value.runMode === "sandbox_test" &&
+    (simulation ||
+      value.workingDirectory !== SANDBOX_TEST_WORKING_DIRECTORY ||
+      value.additionalDirectories !== undefined)
+  ) {
+    return null;
+  }
   return {
     ...(value as unknown as ChatRequest),
     ...(simulation ? { simulation } : {}),

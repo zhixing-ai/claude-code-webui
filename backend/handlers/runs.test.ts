@@ -43,4 +43,47 @@ describe("create run session identity", () => {
     expect(invalidPrompt).toMatchObject({ status: 400 });
     expect(invalidMode).toMatchObject({ status: 400 });
   });
+
+  it("accepts sandbox-test runs only in the isolated chat workspace", async () => {
+    vi.clearAllMocks();
+
+    const wrongDirectory = await handleCreateRunRequest(
+      context({
+        message: "start",
+        runMode: "sandbox_test",
+        workingDirectory: "/home/user/workspace/builder",
+      }),
+      runs,
+    );
+    const extraDirectory = await handleCreateRunRequest(
+      context({
+        message: "start",
+        runMode: "sandbox_test",
+        workingDirectory: "/home/user/workspace/chat",
+        additionalDirectories: ["/system/fde-suite"],
+      }),
+      runs,
+    );
+    const accepted = await handleCreateRunRequest(
+      context({
+        message: "start",
+        requestId: "sandbox-run",
+        runMode: "sandbox_test",
+        workingDirectory: "/home/user/workspace/chat",
+      }),
+      runs,
+    );
+
+    expect(wrongDirectory).toMatchObject({ status: 400 });
+    expect(extraDirectory).toMatchObject({ status: 400 });
+    expect(accepted).toMatchObject({ status: 202 });
+    expect(runs.start).toHaveBeenCalledOnce();
+    expect(runs.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "sandbox-run",
+        runMode: "sandbox_test",
+        workingDirectory: "/home/user/workspace/chat",
+      }),
+    );
+  });
 });
