@@ -7,6 +7,7 @@ import {
   PlayIcon,
 } from "@heroicons/react/24/outline";
 import type {
+  SimulationCase,
   SimulationCaseResult,
   SimulationRunResult,
   SimulationScenario,
@@ -28,6 +29,11 @@ interface SimulationPanelProps {
   onGenerate: () => void;
   onRun: (scenario: SimulationScenario) => void;
   onRunAll: (scenarios: SimulationScenario[]) => void;
+  onEscalateCase?: (
+    scenario: SimulationScenario,
+    testCase: SimulationCase,
+    result: SimulationCaseResult,
+  ) => void;
 }
 
 export function SimulationPanel({
@@ -36,6 +42,7 @@ export function SimulationPanel({
   onGenerate,
   onRun,
   onRunAll,
+  onEscalateCase,
 }: SimulationPanelProps) {
   if (state.status === "designing") {
     return (
@@ -133,6 +140,7 @@ export function SimulationPanel({
             error={state.scenarioErrors[scenario.id]}
             disabled={disabled}
             onRun={() => onRun(scenario)}
+            onEscalateCase={onEscalateCase}
           />
         ))}
       </ol>
@@ -166,6 +174,7 @@ function ScenarioCard({
   error,
   disabled,
   onRun,
+  onEscalateCase,
 }: {
   index: number;
   scenario: SimulationScenario;
@@ -174,6 +183,11 @@ function ScenarioCard({
   error?: string;
   disabled: boolean;
   onRun: () => void;
+  onEscalateCase?: (
+    scenario: SimulationScenario,
+    testCase: SimulationCase,
+    result: SimulationCaseResult,
+  ) => void;
 }) {
   const passed = result?.cases.filter(
     (item) => item.verdict === "passed",
@@ -252,17 +266,26 @@ function ScenarioCard({
           {error && <ErrorNotice message={error} />}
 
           <ol className="mt-3 space-y-2">
-            {scenario.cases.map((testCase, caseIndex) => (
-              <CaseRow
-                key={testCase.id}
-                index={caseIndex}
-                title={testCase.title}
-                question={testCase.openingMessage}
-                result={result?.cases.find(
-                  (item) => item.caseId === testCase.id,
-                )}
-              />
-            ))}
+            {scenario.cases.map((testCase, caseIndex) => {
+              const caseResult = result?.cases.find(
+                (item) => item.caseId === testCase.id,
+              );
+              return (
+                <CaseRow
+                  key={testCase.id}
+                  index={caseIndex}
+                  title={testCase.title}
+                  question={testCase.openingMessage}
+                  result={caseResult}
+                  escalateDisabled={disabled || running}
+                  onEscalate={
+                    onEscalateCase && caseResult && caseResult.verdict !== "passed"
+                      ? () => onEscalateCase(scenario, testCase, caseResult)
+                      : undefined
+                  }
+                />
+              );
+            })}
           </ol>
 
           <button
@@ -294,11 +317,15 @@ function CaseRow({
   title,
   question,
   result,
+  escalateDisabled,
+  onEscalate,
 }: {
   index: number;
   title: string;
   question: string;
   result?: SimulationCaseResult;
+  escalateDisabled?: boolean;
+  onEscalate?: () => void;
 }) {
   return (
     <li className="rounded-lg border border-[var(--border-subtle)] px-2.5 py-2">
@@ -335,6 +362,16 @@ function CaseRow({
             <p className="mt-2 rounded-md bg-[var(--surface-muted)] px-2 py-1.5 text-[9px] leading-4 text-[var(--text-secondary)]">
               考官 · {result.score} 分：{result.evaluation}
             </p>
+            {onEscalate && (
+              <button
+                type="button"
+                disabled={escalateDisabled}
+                onClick={onEscalate}
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-[var(--border-subtle)] px-2 py-1.5 text-[9px] font-semibold text-[var(--text-secondary)] transition-[background-color,color] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                交给 FDE 优化
+              </button>
+            )}
           </div>
         )}
       </details>

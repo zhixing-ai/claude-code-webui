@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
   FDE_MAIN_AGENT,
+  isExamOnlyAgent,
   projectAgentEvents,
   shortAgentName,
 } from "./agents.ts";
@@ -14,6 +15,18 @@ describe("plugin agents", () => {
   it("uses the plugin namespace", () => {
     expect(FDE_MAIN_AGENT).toBe("fde-suite:fde-builder");
     expect(shortAgentName("fde-suite:fde-evaluator")).toBe("fde-evaluator");
+  });
+
+  it("marks only the three exam-runtime roles as exam-only", () => {
+    expect(isExamOnlyAgent("fde-suite:fde-customer-simulator")).toBe(true);
+    expect(isExamOnlyAgent("fde-suite:fde-business-agent")).toBe(true);
+    expect(isExamOnlyAgent("fde-suite:fde-evaluator")).toBe(true);
+    expect(isExamOnlyAgent("fde-evaluator")).toBe(true);
+    expect(isExamOnlyAgent("fde-suite:fde-builder")).toBe(false);
+    expect(isExamOnlyAgent("fde-suite:fde-l1-examiner")).toBe(false);
+    expect(isExamOnlyAgent("fde-suite:fde-scenario-designer")).toBe(false);
+    expect(isExamOnlyAgent("fde-suite:fde-document-auditor")).toBe(false);
+    expect(isExamOnlyAgent("general-purpose")).toBe(false);
   });
 });
 

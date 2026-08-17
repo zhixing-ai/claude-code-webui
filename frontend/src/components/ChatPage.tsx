@@ -11,6 +11,8 @@ import type {
   ToolPermissionStreamResponse,
   InteractionResponse,
   AgentLifecycleEvent,
+  SimulationCase,
+  SimulationCaseResult,
   SimulationCommand,
   SimulationLifecycleEvent,
   SimulationScenario,
@@ -650,6 +652,30 @@ export function ChatPage() {
     [isLoading, runSimulationScenario],
   );
 
+  const handleEscalateCase = useCallback(
+    (
+      scenario: SimulationScenario,
+      testCase: SimulationCase,
+      result: SimulationCaseResult,
+    ) => {
+      if (isLoading) return;
+      const transcript = result.transcript
+        .map(
+          (turn) =>
+            `${turn.role === "customer" ? "客户" : "销售"}：${turn.content}`,
+        )
+        .join("\n");
+      const issues = result.issues.length
+        ? `\n问题清单：${result.issues.join("；")}`
+        : "";
+      const message = `【模拟测试回流】场景「${scenario.title}」Case「${testCase.title}」${
+        result.verdict === "failed" ? "未通过" : "部分通过"
+      }（考官 ${result.score} 分）。\n考官判词：${result.evaluation}${issues}\n对话原文：\n${transcript}\n请按批注流程修复（先查配置、后动内核）；改完告诉我，我会在右侧该场景点「重新模拟」复测。`;
+      void sendMessage(message);
+    },
+    [isLoading, sendMessage],
+  );
+
   useEffect(() => {
     if (!workingDirectory) return;
     if (sessionId && loadedSessionId !== sessionId && !historyError) {
@@ -1239,6 +1265,7 @@ export function ChatPage() {
             onGenerateScenarios={handleGenerateScenarios}
             onRunScenario={handleRunScenario}
             onRunAllScenarios={handleRunAllScenarios}
+            onEscalateCase={handleEscalateCase}
           />
         )}
       </div>

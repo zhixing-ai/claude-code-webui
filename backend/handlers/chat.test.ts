@@ -1387,3 +1387,103 @@ describe("Chat Handler - Simulation workflow", () => {
     ).resolves.toMatchObject({ behavior: "deny" });
   });
 });
+
+describe("Chat Handler - Console exam gates", () => {
+  const makeContext = (request: Record<string, unknown>) =>
+    ({
+      req: { json: vi.fn().mockResolvedValue(request) },
+      var: {
+        config: {
+          cliPath: "/path/to/claude-cli",
+          fdeSuitePluginDir: "/plugins/fde-suite",
+        },
+      },
+    }) as unknown as Context;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockQuery.mockReturnValue({
+      [Symbol.asyncIterator]: async function* () {},
+      interrupt: vi.fn(),
+      next: vi.fn(),
+      return: vi.fn(),
+      throw: vi.fn(),
+    } as any);
+  });
+
+  it("appends the console environment declaration to builder sessions", async () => {
+    await handleChatRequest(
+      makeContext({ message: "开始装配", requestId: "console-env-1" }),
+      new Map<string, AbortController>(),
+      new PendingInteractions(),
+    );
+    const options = mockQuery.mock.calls[0]?.[0].options;
+    if (!options) throw new Error("Expected query options");
+    expect(options.systemPrompt).toMatchObject({
+      append: expect.stringContaining("自助台环境声明"),
+    });
+  });
+
+  it("keeps the declaration out of simulation runs", async () => {
+    await handleChatRequest(
+      makeContext({
+        message: "生成模拟测试场景",
+        requestId: "console-env-2",
+        simulation: { action: "design" },
+      }),
+      new Map<string, AbortController>(),
+      new PendingInteractions(),
+    );
+    const options = mockQuery.mock.calls[0]?.[0].options;
+    if (!options) throw new Error("Expected query options");
+    const append = (options.systemPrompt as { append?: string })?.append ?? "";
+    expect(append).not.toContain("自助台环境声明");
+    expect(append).toContain("fde-scenario-designer");
+  });
+
+  it("denies exam-only subagents outside the simulation channel", async () => {
+    await handleChatRequest(
+      makeContext({ message: "就在对话里考一题", requestId: "console-gate-1" }),
+      new Map<string, AbortController>(),
+      new PendingInteractions(),
+    );
+    const options = mockQuery.mock.calls[0]?.[0].options;
+    if (!options) throw new Error("Expected query options");
+    for (const agentType of [
+      "fde-suite:fde-customer-simulator",
+      "fde-suite:fde-business-agent",
+      "fde-suite:fde-evaluator",
+    ]) {
+      await expect(
+        options.canUseTool?.("Task", { subagent_type: agentType }, {} as any),
+      ).resolves.toMatchObject({
+        behavior: "deny",
+        message: expect.stringContaining("模拟测试"),
+      });
+      await expect(
+        options.canUseTool?.("Agent", { subagent_type: agentType }, {} as any),
+      ).resolves.toMatchObject({ behavior: "deny" });
+    }
+  });
+
+  it("still allows exam agents inside the simulation channel", async () => {
+    await handleChatRequest(
+      makeContext({
+        message: "开始模拟",
+        requestId: "console-gate-2",
+        simulation: { action: "design" },
+      }),
+      new Map<string, AbortController>(),
+      new PendingInteractions(),
+    );
+    const options = mockQuery.mock.calls[0]?.[0].options;
+    if (!options) throw new Error("Expected query options");
+    await expect(
+      options.canUseTool?.(
+        "Task",
+        { subagent_type: "fde-suite:fde-evaluator" },
+        {} as any,
+      ),
+    ).resolves.toMatchObject({ behavior: "allow" });
+  });
+});

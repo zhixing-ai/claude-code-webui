@@ -8,7 +8,11 @@ import {
 import { useState } from "react";
 import type { ClaudeTask } from "../../utils/taskProjection";
 import type { AgentRun } from "../../utils/agentProjection";
-import type { SimulationScenario } from "../../types";
+import type {
+  SimulationCase,
+  SimulationCaseResult,
+  SimulationScenario,
+} from "../../types";
 import { SimulationPanel, type SimulationPanelState } from "./SimulationPanel";
 
 interface TaskSidebarProps {
@@ -19,6 +23,11 @@ interface TaskSidebarProps {
   onGenerateScenarios: () => void;
   onRunScenario: (scenario: SimulationScenario) => void;
   onRunAllScenarios: (scenarios: SimulationScenario[]) => void;
+  onEscalateCase?: (
+    scenario: SimulationScenario,
+    testCase: SimulationCase,
+    result: SimulationCaseResult,
+  ) => void;
 }
 
 export function TaskSidebar({
@@ -29,6 +38,7 @@ export function TaskSidebar({
   onGenerateScenarios,
   onRunScenario,
   onRunAllScenarios,
+  onEscalateCase,
 }: TaskSidebarProps) {
   const [view, setView] = useState<"tasks" | "agents" | "simulation">("tasks");
   const completed = tasks.filter((task) => task.status === "completed").length;
@@ -166,6 +176,7 @@ export function TaskSidebar({
             onGenerate={onGenerateScenarios}
             onRun={onRunScenario}
             onRunAll={onRunAllScenarios}
+            onEscalateCase={onEscalateCase}
           />
         ) : isLoading ? (
           <TaskSkeleton />

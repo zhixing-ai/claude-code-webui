@@ -21,6 +21,17 @@ function isFdeSubagent(agentType: string): boolean {
   return FDE_SUBAGENTS.has(shortAgentName(agentType));
 }
 
+/** Exam-runtime roles; only the simulation channel may dispatch these (console spec S2). */
+const EXAM_ONLY_SUBAGENTS = new Set([
+  "fde-customer-simulator",
+  "fde-business-agent",
+  "fde-evaluator",
+]);
+
+export function isExamOnlyAgent(agentType: string): boolean {
+  return EXAM_ONLY_SUBAGENTS.has(shortAgentName(agentType));
+}
+
 type UnknownRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): UnknownRecord | undefined {

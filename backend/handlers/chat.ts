@@ -21,6 +21,7 @@ import { PendingInteractions } from "./interactions.ts";
 import {
   FDE_MAIN_AGENT,
   FDE_PLUGIN_NAME,
+  isExamOnlyAgent,
   projectAgentEvents,
 } from "../agents.ts";
 import {
@@ -40,6 +41,12 @@ type ActiveRun = {
   abortController: AbortController;
   subscribers: Set<Subscriber>;
 };
+
+const CONSOLE_ENV_DECLARATION =
+  "【自助台环境声明】本会话运行在知行猿自助台界面内，右侧有「模拟测试」面板；模拟测试一律在面板里跑，不在本对话内开考（陪练场 skill「自助台环境」节按此执行）。";
+
+const EXAM_AGENT_DENIED_MESSAGE =
+  "自助台环境里模拟测试一律在右侧「模拟测试」面板跑；请引导用户点击右侧面板，不要在本对话内开考。";
 
 const CONTEXT_LIMIT =
   /prompt is too long|exceeded model token limit|conversation too long/i;
@@ -268,6 +275,9 @@ export class ChatRunManager {
       request.simulation
         ? simulationSystemPrompt(request.simulation)
         : undefined,
+      !request.simulation && this.fdeSuitePluginDir
+        ? CONSOLE_ENV_DECLARATION
+        : undefined,
     ]
       .filter((value): value is string => Boolean(value))
       .join("\n\n");
@@ -327,6 +337,14 @@ export class ChatRunManager {
       sessionStoreFlush: "eager",
       loadTimeoutMs: 90_000,
       canUseTool: async (toolName, input, permissionOptions) => {
+        if (!request.simulation && ["Task", "Agent"].includes(toolName)) {
+          const subagentType = isObject(input)
+            ? (input.subagent_type ?? input.agent_type)
+            : undefined;
+          if (typeof subagentType === "string" && isExamOnlyAgent(subagentType)) {
+            return { behavior: "deny", message: EXAM_AGENT_DENIED_MESSAGE };
+          }
+        }
         if (
           request.simulation &&
           ["Task", "Agent", "StructuredOutput"].includes(toolName)
