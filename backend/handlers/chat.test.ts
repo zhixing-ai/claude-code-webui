@@ -1056,7 +1056,8 @@ describe("Chat Handler - Permission Mode Tests", () => {
       mockContext.req.json = vi.fn().mockResolvedValue({
         message: "Ask me",
         requestId: "request-1",
-        permissionMode: "bypassPermissions",
+        runMode: "builder",
+        permissionMode: "default",
       });
 
       const response = await handleChatRequest(
@@ -1093,11 +1094,28 @@ describe("Chat Handler - Permission Mode Tests", () => {
       expect(mockQuery).toHaveBeenCalledWith({
         prompt: "Ask me",
         options: expect.objectContaining({
-          permissionMode: "bypassPermissions",
-          allowDangerouslySkipPermissions: true,
+          permissionMode: "default",
           canUseTool: expect.any(Function),
+          hooks: expect.objectContaining({
+            PreToolUse: expect.any(Array),
+          }),
         }),
       });
+      const hook =
+        mockQuery.mock.calls[0]?.[0].options?.hooks?.PreToolUse?.[0]
+          ?.hooks?.[0];
+      await expect(
+        hook?.(
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: "AskUserQuestion",
+            tool_input: { questions },
+            tool_use_id: "tool-1",
+          } as any,
+          "tool-1",
+          {} as any,
+        ),
+      ).resolves.toEqual({});
     });
 
     it("emits a tool permission and resumes the same stream after approval", async () => {
@@ -1178,20 +1196,21 @@ describe("Chat Handler - Permission Mode Tests", () => {
       });
     });
 
-    it("auto-allows ordinary tools when bypass permissions reaches the callback", async () => {
+    it("auto-allows ordinary tools in managed product runs before permission callbacks", async () => {
       let permissionResult: unknown;
       mockQuery.mockImplementation(
         ({ options }: any) =>
           ({
             [Symbol.asyncIterator]: async function* () {
-              permissionResult = await options.canUseTool(
-                "Edit",
-                { file_path: "SKILL.md" },
+              permissionResult = await options.hooks.PreToolUse[0].hooks[0](
                 {
-                  signal: options.abortController.signal,
-                  toolUseID: "tool-1",
-                  requestId: "control-1",
+                  hook_event_name: "PreToolUse",
+                  tool_name: "Edit",
+                  tool_input: { file_path: "SKILL.md" },
+                  tool_use_id: "tool-1",
                 },
+                "tool-1",
+                { signal: options.abortController.signal },
               );
               yield {
                 type: "result",
@@ -1204,7 +1223,9 @@ describe("Chat Handler - Permission Mode Tests", () => {
       mockContext.req.json = vi.fn().mockResolvedValue({
         message: "Edit the skill",
         requestId: "request-1",
+        runMode: "builder",
         permissionMode: "bypassPermissions",
+        allowedTools: ["AskUserQuestion", "AskUserQuestion(*)", "Read"],
       });
 
       const response = await handleChatRequest(
@@ -1215,9 +1236,81 @@ describe("Chat Handler - Permission Mode Tests", () => {
       await response.text();
 
       expect(permissionResult).toEqual({
-        behavior: "allow",
-        updatedInput: { file_path: "SKILL.md" },
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+          permissionDecisionReason:
+            "SalesAI product runs auto-approve ordinary tools",
+        },
       });
+      expect(mockQuery.mock.calls[0]?.[0].options).toMatchObject({
+        permissionMode: "default",
+        allowedTools: ["Read"],
+      });
+      expect(
+        mockQuery.mock.calls[0]?.[0].options?.allowDangerouslySkipPermissions,
+      ).toBeUndefined();
+
+      const options = mockQuery.mock.calls[0]?.[0].options;
+      if (!options?.canUseTool || !options.abortController) {
+        throw new Error("Expected managed run permission callbacks");
+      }
+      const hook = options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
+      for (const toolName of [
+        "Agent",
+        "Task",
+        "TaskOutput",
+        "StructuredOutput",
+        "Read",
+        "Write",
+        "Edit",
+        "Bash",
+        "Skill",
+        "Glob",
+        "Grep",
+      ]) {
+        await expect(
+          hook?.(
+            {
+              hook_event_name: "PreToolUse",
+              tool_name: toolName,
+              tool_input: { value: toolName },
+              tool_use_id: `tool-${toolName}`,
+            } as any,
+            `tool-${toolName}`,
+            {} as any,
+          ),
+        ).resolves.toMatchObject({
+          hookSpecificOutput: { permissionDecision: "allow" },
+        });
+        await expect(
+          options?.canUseTool(
+            toolName,
+            { value: toolName },
+            {
+              signal: options.abortController.signal,
+              toolUseID: `tool-${toolName}`,
+              requestId: `request-${toolName}`,
+            },
+          ),
+        ).resolves.toEqual({
+          behavior: "allow",
+          updatedInput: { value: toolName },
+        });
+      }
+
+      await expect(
+        hook?.(
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: "AskUserQuestion",
+            tool_input: { questions: [] },
+            tool_use_id: "tool-ask",
+          } as any,
+          "tool-ask",
+          {} as any,
+        ),
+      ).resolves.toEqual({});
     });
 
     it("denies invalid AskUserQuestion input", async () => {
@@ -1381,7 +1474,10 @@ describe("Chat Handler - Simulation workflow", () => {
     expect(options?.tools).toEqual([
       "Task",
       "Agent",
+      "TaskOutput",
+      "TaskStop",
       "StructuredOutput",
+      "AskUserQuestion",
       "Read",
       "Glob",
       "Grep",
@@ -1440,6 +1536,7 @@ describe("Chat Handler - Simulation workflow", () => {
     expect(body).toContain("Agent 未上报生成的模拟测试场景");
     expect(body).toContain('"type":"error"');
     expect(body).not.toContain('"type":"done"');
+    expect(mockQuery.mock.calls[0]?.[0].options?.hooks).toBeUndefined();
   });
 
   it("loads the plugin without the builder agent in sandbox test mode", async () => {
@@ -1465,6 +1562,9 @@ describe("Chat Handler - Simulation workflow", () => {
           message: "你好",
           requestId: "sandbox-run",
           runMode: "sandbox_test",
+          // Product mode is authoritative: even an obsolete or malformed
+          // caller preference must not re-enable approval cards.
+          permissionMode: "default",
         }),
       },
       var: {
@@ -1493,6 +1593,28 @@ describe("Chat Handler - Simulation workflow", () => {
       }),
     });
     expect(mockQuery.mock.calls[0]?.[0].options?.agent).toBeUndefined();
+    expect(mockQuery.mock.calls[0]?.[0].options).toMatchObject({
+      permissionMode: "default",
+    });
+    expect(
+      mockQuery.mock.calls[0]?.[0].options?.allowDangerouslySkipPermissions,
+    ).toBeUndefined();
+    const sandboxHook =
+      mockQuery.mock.calls[0]?.[0].options?.hooks?.PreToolUse?.[0]?.hooks?.[0];
+    await expect(
+      sandboxHook?.(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Write",
+          tool_input: { file_path: "draft.md", content: "draft" },
+          tool_use_id: "tool-write",
+        } as any,
+        "tool-write",
+        {} as any,
+      ),
+    ).resolves.toMatchObject({
+      hookSpecificOutput: { permissionDecision: "allow" },
+    });
   });
 
   it("adds the workflow prompt and emits structured simulation events", async () => {
@@ -1546,6 +1668,7 @@ describe("Chat Handler - Simulation workflow", () => {
         json: vi.fn().mockResolvedValue({
           message: "生成模拟测试场景",
           requestId: "simulation-run",
+          runMode: "builder",
           simulation: { action: "design" },
         }),
       },
@@ -1567,7 +1690,17 @@ describe("Chat Handler - Simulation workflow", () => {
     expect(mockQuery).toHaveBeenCalledWith({
       prompt: "生成模拟测试场景",
       options: expect.objectContaining({
-        tools: ["Task", "Agent", "StructuredOutput", "Read", "Glob", "Grep"],
+        tools: [
+          "Task",
+          "Agent",
+          "TaskOutput",
+          "TaskStop",
+          "StructuredOutput",
+          "AskUserQuestion",
+          "Read",
+          "Glob",
+          "Grep",
+        ],
         plugins: [
           {
             type: "local",
@@ -1589,56 +1722,49 @@ describe("Chat Handler - Simulation workflow", () => {
       "mcp__webui__publish_simulation_state",
     );
     expect(options.mcpServers).toHaveProperty("webui");
+    expect(options).toMatchObject({
+      permissionMode: "default",
+    });
+    expect(options.allowDangerouslySkipPermissions).toBeUndefined();
+    const simulationHook = options.hooks?.PreToolUse?.[0]?.hooks?.[0];
     await expect(
-      options.canUseTool?.(
-        "Agent",
-        { description: "Design scenarios" },
+      simulationHook?.(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Agent",
+          tool_input: { description: "Design scenarios" },
+          tool_use_id: "tool-agent",
+        } as any,
+        "tool-agent",
         {} as any,
       ),
-    ).resolves.toMatchObject({ behavior: "allow" });
-    await expect(
-      options.canUseTool?.("Read", { file_path: "merchant.md" }, {
-        agentID: "scenario-agent",
-      } as any),
-    ).resolves.toMatchObject({ behavior: "allow" });
-    await expect(
-      options.canUseTool?.("Read", { file_path: "merchant.md" }, {} as any),
-    ).resolves.toMatchObject({ behavior: "deny" });
-    const preToolUse = options.hooks?.PreToolUse?.[0]?.hooks[0];
-    if (!preToolUse) throw new Error("Expected simulation PreToolUse hook");
-    await expect(
-      preToolUse(
-        {
-          hook_event_name: "PreToolUse",
-          tool_name: "Read",
-          tool_input: { file_path: "merchant.md" },
-          tool_use_id: "read-root",
-          session_id: "simulation-session",
-          transcript_path: "/tmp/transcript",
-          cwd: "/workspace",
-          permission_mode: "bypassPermissions",
-        },
-        "read-root",
-        { signal: new AbortController().signal },
-      ),
     ).resolves.toMatchObject({
-      hookSpecificOutput: { permissionDecision: "deny" },
+      hookSpecificOutput: { permissionDecision: "allow" },
     });
     await expect(
-      preToolUse(
+      simulationHook?.(
         {
           hook_event_name: "PreToolUse",
           tool_name: "Read",
           tool_input: { file_path: "merchant.md" },
-          tool_use_id: "read-agent",
-          session_id: "simulation-session",
-          transcript_path: "/tmp/transcript",
-          cwd: "/workspace",
-          agent_id: "scenario-agent",
-          permission_mode: "bypassPermissions",
-        },
-        "read-agent",
-        { signal: new AbortController().signal },
+          tool_use_id: "tool-read",
+        } as any,
+        "tool-read",
+        {} as any,
+      ),
+    ).resolves.toMatchObject({
+      hookSpecificOutput: { permissionDecision: "allow" },
+    });
+    await expect(
+      simulationHook?.(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "AskUserQuestion",
+          tool_input: { questions: [] },
+          tool_use_id: "tool-ask",
+        } as any,
+        "tool-ask",
+        {} as any,
       ),
     ).resolves.toEqual({});
   });

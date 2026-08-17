@@ -127,7 +127,6 @@ const runResultSchema = {
           transcript: {
             type: "array",
             minItems: 2,
-            maxItems: 8,
             items: {
               type: "object",
               additionalProperties: false,
@@ -310,8 +309,7 @@ function readRunResult(value: unknown): SimulationRunResult | undefined {
     if (
       !result ||
       !Array.isArray(result.transcript) ||
-      result.transcript.length < 2 ||
-      result.transcript.length > 8
+      result.transcript.length < 2
     ) {
       return;
     }
@@ -400,6 +398,154 @@ export function readSimulationLifecycleEvent(
   }
 }
 
+function describeSimulationLifecycleError(value: unknown): string {
+  const record = asRecord(value);
+  if (!record) return "root: expected an object";
+
+  const kind = record.kind;
+  if (typeof kind !== "string" || !kind.trim()) {
+    return "kind: required non-empty string is missing";
+  }
+
+  if (kind === "design_started") {
+    return typeof record.runAfterDesign === "undefined" ||
+      typeof record.runAfterDesign === "boolean"
+      ? "design_started payload is valid"
+      : "runAfterDesign: expected boolean";
+  }
+
+  if (kind === "scenarios_generated") {
+    if (!Array.isArray(record.scenarios)) {
+      return "scenarios: required array is missing";
+    }
+    if (record.scenarios.length === 0) return "scenarios: must not be empty";
+    if (record.scenarios.length > 8) {
+      return "scenarios: must contain at most 8 items";
+    }
+    for (const [scenarioIndex, scenarioValue] of record.scenarios.entries()) {
+      const scenario = asRecord(scenarioValue);
+      if (!scenario) return `scenarios.${scenarioIndex}: expected an object`;
+      for (const field of [
+        "id",
+        "title",
+        "stage",
+        "description",
+        "persona",
+        "objective",
+      ]) {
+        if (!readString(scenario, field)) {
+          return `scenarios.${scenarioIndex}.${field}: required non-empty string is missing or exceeds 4000 characters`;
+        }
+      }
+      if (!Array.isArray(scenario.cases)) {
+        return `scenarios.${scenarioIndex}.cases: required array is missing`;
+      }
+      if (scenario.cases.length === 0 || scenario.cases.length > 8) {
+        return `scenarios.${scenarioIndex}.cases: must contain between 1 and 8 items`;
+      }
+      for (const [caseIndex, caseValue] of scenario.cases.entries()) {
+        const item = asRecord(caseValue);
+        if (!item) {
+          return `scenarios.${scenarioIndex}.cases.${caseIndex}: expected an object`;
+        }
+        for (const field of ["id", "title", "customerGoal", "openingMessage"]) {
+          if (!readString(item, field)) {
+            return `scenarios.${scenarioIndex}.cases.${caseIndex}.${field}: required non-empty string is missing or exceeds 4000 characters`;
+          }
+        }
+        for (const field of ["expectedBehaviors", "passCriteria"]) {
+          if (!readStrings(item[field])) {
+            return `scenarios.${scenarioIndex}.cases.${caseIndex}.${field}: expected 1 to 8 non-empty strings`;
+          }
+        }
+      }
+    }
+    return "scenarios_generated payload contains duplicate scenario or case IDs";
+  }
+
+  if (kind === "run_started") {
+    if (!Array.isArray(record.scenarioIds)) {
+      return "scenarioIds: required array is missing";
+    }
+    if (!readStrings(record.scenarioIds)) {
+      return "scenarioIds: expected 1 to 8 non-empty strings";
+    }
+    return "scenarioIds: duplicate IDs are not allowed";
+  }
+
+  if (kind === "simulation_completed") {
+    const result = asRecord(record.result);
+    if (!result) return "result: required object is missing";
+    for (const field of ["scenarioId", "summary"]) {
+      if (!readString(result, field)) {
+        return `result.${field}: required non-empty string is missing or exceeds 4000 characters`;
+      }
+    }
+    if (!Array.isArray(result.cases)) {
+      return "result.cases: required array is missing";
+    }
+    if (result.cases.length === 0 || result.cases.length > 8) {
+      return "result.cases: must contain between 1 and 8 items";
+    }
+    for (const [caseIndex, caseValue] of result.cases.entries()) {
+      const item = asRecord(caseValue);
+      if (!item) return `result.cases.${caseIndex}: expected an object`;
+      if (!readString(item, "caseId")) {
+        return `result.cases.${caseIndex}.caseId: required non-empty string is missing or exceeds 4000 characters`;
+      }
+      if (!["passed", "partial", "failed"].includes(String(item.verdict))) {
+        return `result.cases.${caseIndex}.verdict: expected one of passed, partial, failed`;
+      }
+      if (
+        typeof item.score !== "number" ||
+        item.score < 0 ||
+        item.score > 100
+      ) {
+        return `result.cases.${caseIndex}.score: expected a number between 0 and 100`;
+      }
+      if (!readString(item, "evaluation")) {
+        return `result.cases.${caseIndex}.evaluation: required non-empty string is missing or exceeds 4000 characters`;
+      }
+      if (!Array.isArray(item.transcript)) {
+        return `result.cases.${caseIndex}.transcript: required array is missing`;
+      }
+      if (item.transcript.length < 2) {
+        return `result.cases.${caseIndex}.transcript: must contain at least 2 turns`;
+      }
+      for (const [turnIndex, turnValue] of item.transcript.entries()) {
+        const turn = asRecord(turnValue);
+        if (!turn) {
+          return `result.cases.${caseIndex}.transcript.${turnIndex}: expected an object`;
+        }
+        if (turn.role !== "customer" && turn.role !== "sales") {
+          return `result.cases.${caseIndex}.transcript.${turnIndex}.role: expected customer or sales`;
+        }
+        if (!readString(turn, "content")) {
+          return `result.cases.${caseIndex}.transcript.${turnIndex}.content: required non-empty string is missing or exceeds 4000 characters`;
+        }
+      }
+      for (const field of ["strengths", "issues"]) {
+        if (!readStrings(item[field], true)) {
+          return `result.cases.${caseIndex}.${field}: expected at most 8 non-empty strings`;
+        }
+      }
+    }
+    return "result: invalid simulation result";
+  }
+
+  return `kind: unsupported simulation lifecycle event ${JSON.stringify(kind)}`;
+}
+
+export function validateSimulationLifecycleEvent(
+  value: unknown,
+):
+  { ok: true; event: SimulationLifecycleEvent } | { ok: false; error: string } {
+  const event = readSimulationLifecycleEvent(value);
+  return event
+    ? { ok: true, event }
+    : { ok: false, error: describeSimulationLifecycleError(value) };
+}
+
 export function createSimulationReporter(
   onEvent: (event: SimulationLifecycleEvent) => string | undefined,
 ) {
@@ -424,14 +570,19 @@ export function createSimulationReporter(
           result: z.unknown().optional(),
         },
         async (input) => {
-          const event = readSimulationLifecycleEvent(input);
-          if (!event) {
+          const validation = validateSimulationLifecycleEvent(input);
+          if (!validation.ok) {
             return {
               isError: true,
-              content: [{ type: "text", text: "Invalid simulation state" }],
+              content: [
+                {
+                  type: "text",
+                  text: `Invalid simulation state: ${validation.error}. Correct this field and call publish_simulation_state again with the same lifecycle event.`,
+                },
+              ],
             };
           }
-          const rejection = onEvent(event);
+          const rejection = onEvent(validation.event);
           if (rejection) {
             return {
               isError: true,

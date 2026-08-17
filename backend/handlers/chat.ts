@@ -301,43 +301,44 @@ export class ChatRunManager {
             return emitSimulation(event);
           })
         : undefined;
+    const managedProductRun =
+      request.runMode === "builder" || request.runMode === "sandbox_test";
+    const requestedAllowedTools = managedProductRun
+      ? request.allowedTools?.filter(
+          (tool) => !tool.startsWith("AskUserQuestion"),
+        )
+      : request.allowedTools;
     const allowedTools = simulationReporter
       ? [
           ...new Set([
-            ...(request.allowedTools ?? []),
+            ...(requestedAllowedTools ?? []),
             SIMULATION_REPORT_TOOL_NAME,
           ]),
         ]
-      : request.allowedTools;
+      : requestedAllowedTools;
 
-    const simulationPreToolHook: HookCallback = async (input) => {
-      if (!simulation || input.hook_event_name !== "PreToolUse") return {};
-      if (input.agent_id) return {};
-
-      const allowedRootTools = new Set([
-        "Task",
-        "Agent",
-        "TaskOutput",
-        "TaskStop",
-        "StructuredOutput",
-        SIMULATION_REPORT_TOOL_NAME,
-      ]);
-      if (!allowedRootTools.has(input.tool_name)) {
-        return denyTool(
-          "模拟测试主 Agent 只能调度指定角色、等待角色结果并上报结构化状态",
-        );
+    // `bypassPermissions` cannot express SalesAI's policy: the Agent SDK skips
+    // canUseTool entirely in that mode, including for AskUserQuestion. Keep the
+    // SDK in default mode and auto-allow every *ordinary* tool in PreToolUse;
+    // AskUserQuestion deliberately falls through to canUseTool below.
+    const managedPermissionMode = managedProductRun
+      ? "default"
+      : request.permissionMode;
+    const autoApproveOrdinaryTools: HookCallback = async (input) => {
+      if (
+        input.hook_event_name !== "PreToolUse" ||
+        input.tool_name === "AskUserQuestion"
+      ) {
+        return {};
       }
-      if (["Agent", "Task"].includes(input.tool_name)) {
-        const toolInput = isObject(input.tool_input) ? input.tool_input : {};
-        const subagentType = toolInput.subagent_type;
-        if (
-          typeof subagentType !== "string" ||
-          !allowedSimulationAgents(simulation).has(subagentType)
-        ) {
-          return denyTool("模拟测试只能调用协议指定的隔离角色 Agent");
-        }
-      }
-      return {};
+      return {
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+          permissionDecisionReason:
+            "SalesAI product runs auto-approve ordinary tools",
+        },
+      };
     };
 
     const options: Options = {
@@ -364,7 +365,10 @@ export class ChatRunManager {
             tools: [
               "Task",
               "Agent",
+              "TaskOutput",
+              "TaskStop",
               "StructuredOutput",
+              "AskUserQuestion",
               "Read",
               "Glob",
               "Grep",
@@ -388,40 +392,20 @@ export class ChatRunManager {
             },
           }
         : {}),
-      ...(request.permissionMode
-        ? { permissionMode: request.permissionMode }
+      ...(managedPermissionMode
+        ? { permissionMode: managedPermissionMode }
         : {}),
-      ...(request.permissionMode === "bypassPermissions"
-        ? { allowDangerouslySkipPermissions: true }
-        : {}),
-      ...(simulation
-        ? { hooks: { PreToolUse: [{ hooks: [simulationPreToolHook] }] } }
+      ...(managedProductRun
+        ? {
+            hooks: {
+              PreToolUse: [{ hooks: [autoApproveOrdinaryTools] }],
+            },
+          }
         : {}),
       sessionStore: this.sessionStore,
       sessionStoreFlush: "eager",
       loadTimeoutMs: 90_000,
       canUseTool: async (toolName, input, permissionOptions) => {
-        if (
-          simulation &&
-          [
-            "Task",
-            "Agent",
-            "TaskOutput",
-            "TaskStop",
-            "StructuredOutput",
-          ].includes(toolName)
-        ) {
-          return { behavior: "allow", updatedInput: input };
-        }
-        if (simulation && ["Read", "Glob", "Grep"].includes(toolName)) {
-          return permissionOptions.agentID
-            ? { behavior: "allow", updatedInput: input }
-            : {
-                behavior: "deny",
-                message:
-                  "Simulation file access is restricted to the delegated agent",
-              };
-        }
         if (toolName === "AskUserQuestion") {
           const questions = readQuestions(input);
           if (!questions) {
@@ -444,7 +428,7 @@ export class ChatRunManager {
           return pending.response;
         }
 
-        if (request.permissionMode === "bypassPermissions") {
+        if (managedProductRun) {
           return { behavior: "allow", updatedInput: input };
         }
 
@@ -712,36 +696,6 @@ function readSessionId(message: unknown): string | undefined {
   if (!isObject(message)) return undefined;
   const value = message.session_id;
   return typeof value === "string" && value ? value : undefined;
-}
-
-function denyTool(reason: string) {
-  return {
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse" as const,
-      permissionDecision: "deny" as const,
-      permissionDecisionReason: reason,
-    },
-  };
-}
-
-function allowedSimulationAgents(
-  command: NonNullable<ChatRequest["simulation"]>,
-): Set<string> {
-  const agents = new Set<string>();
-  const needsDesign =
-    command.action === "design" ||
-    (command.action === "orchestrate" && command.startsWith === "design");
-  const needsRun =
-    command.action === "run" ||
-    command.action === "run_all" ||
-    (command.action === "orchestrate" && command.runAfterDesign);
-  if (needsDesign) agents.add("fde-suite:fde-scenario-designer");
-  if (needsRun) {
-    agents.add("fde-suite:fde-customer-simulator");
-    agents.add("fde-suite:fde-business-agent");
-    agents.add("fde-suite:fde-evaluator");
-  }
-  return agents;
 }
 
 function readChatRequest(value: unknown): ChatRequest | null {

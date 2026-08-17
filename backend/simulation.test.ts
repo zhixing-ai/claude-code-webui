@@ -9,6 +9,7 @@ import {
   simulationOutputFormat,
   simulationSystemPrompt,
   SimulationLifecycleTracker,
+  validateSimulationLifecycleEvent,
 } from "./simulation.ts";
 
 const scenario = {
@@ -188,6 +189,77 @@ describe("simulation workflow", () => {
         scenarioIds: [scenario.id, scenario.id],
       }),
     ).toBeUndefined();
+  });
+
+  it("accepts transcripts of any length", () => {
+    const turns = Array.from({ length: 20 }, (_, index) => ({
+      role: index % 2 === 0 ? "customer" : "sales",
+      content: `第 ${index + 1} 句`,
+    }));
+    const result = {
+      scenarioId: scenario.id,
+      summary: "完成长对话测试",
+      cases: [
+        {
+          caseId: "discount",
+          verdict: "passed",
+          score: 90,
+          transcript: turns,
+          evaluation: "边界清楚",
+          strengths: [],
+          issues: [],
+        },
+      ],
+    };
+
+    expect(
+      readSimulationLifecycleEvent({
+        kind: "simulation_completed",
+        result,
+      }),
+    ).toEqual({ kind: "simulation_completed", result });
+    expect(
+      simulationOutputFormat({ action: "run", scenario }),
+    ).not.toMatchObject({
+      schema: {
+        properties: {
+          cases: {
+            items: {
+              properties: { transcript: { maxItems: expect.anything() } },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it("returns the exact schema path for an invalid live report", () => {
+    expect(
+      validateSimulationLifecycleEvent({
+        kind: "simulation_completed",
+        result: {
+          scenarioId: scenario.id,
+          summary: "完成",
+          cases: [
+            {
+              caseId: "discount",
+              verdict: "passed",
+              score: 90,
+              transcript: [
+                { role: "customer", content: "能优惠吗？" },
+                { role: "assistant", content: "我先确认权益。" },
+              ],
+              evaluation: "边界清楚",
+              strengths: [],
+              issues: [],
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      ok: false,
+      error: "result.cases.0.transcript.1.role: expected customer or sales",
+    });
   });
 
   it("fails closed when a simulation lifecycle stops after its start event", () => {
