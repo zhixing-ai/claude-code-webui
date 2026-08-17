@@ -12,15 +12,8 @@ import type {
   SimulationScenario,
   SimulationVerdict,
 } from "../../types";
-
-export interface SimulationPanelState {
-  status: "idle" | "designing" | "ready" | "running" | "error";
-  scenarios: SimulationScenario[];
-  results: Record<string, SimulationRunResult>;
-  runningScenarioIds: string[];
-  scenarioErrors: Record<string, string>;
-  error?: string;
-}
+import type { SimulationPanelState } from "../../utils/simulationProjection";
+export type { SimulationPanelState } from "../../utils/simulationProjection";
 
 interface SimulationPanelProps {
   state: SimulationPanelState;

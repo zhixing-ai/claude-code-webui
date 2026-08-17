@@ -46,6 +46,10 @@ export const getSessionsUrl = (directory: string) => {
   return `/api/sessions?directory=${encodeURIComponent(directory)}`;
 };
 
+export const getSessionMessagesUrl = (directory: string, sessionId: string) => {
+  return `/api/sessions/${encodeURIComponent(sessionId)}/messages?directory=${encodeURIComponent(directory)}`;
+};
+
 // Helper function to get projects URL
 export const getProjectsUrl = () => {
   return API_CONFIG.ENDPOINTS.PROJECTS;

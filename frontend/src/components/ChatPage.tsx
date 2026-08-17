@@ -5,7 +5,6 @@ import type {
   ChatRequest,
   ChatMessage,
   SDKMessage,
-  ProjectInfo,
   PermissionMode,
   AskUserQuestionStreamResponse,
   ToolPermissionStreamResponse,
@@ -30,7 +29,6 @@ import { HistoryView } from "./HistoryView";
 import {
   getChatUrl,
   getInteractionResponseUrl,
-  getProjectsUrl,
   getRunEventsUrl,
   getRunUrl,
 } from "../config/api";
@@ -39,7 +37,6 @@ import { normalizeWindowsPath } from "../utils/pathUtils";
 import { extractToolInfo, generateToolPatterns } from "../utils/toolUtils";
 import type { StreamingContext } from "../hooks/streaming/useMessageProcessor";
 import { TaskSidebar } from "./chat/TaskSidebar";
-import type { SimulationPanelState } from "./chat/SimulationPanel";
 import {
   createEmptyTaskProjection,
   reduceTaskMessage,
@@ -52,6 +49,11 @@ import {
   selectAgentRuns,
   stopActiveAgents,
 } from "../utils/agentProjection";
+import {
+  createEmptySimulationState,
+  reduceSimulationEvent,
+  replaySimulationMessages,
+} from "../utils/simulationProjection";
 import {
   getStorageItem,
   removeStorageItem,
@@ -70,27 +72,19 @@ interface RunStreamResult {
   sessionId: string | null;
   terminal: boolean;
   simulationEventReceived: boolean;
-}
-
-function createEmptySimulationState(): SimulationPanelState {
-  return {
-    status: "idle",
-    scenarios: [],
-    results: {},
-    runningScenarioIds: [],
-    scenarioErrors: {},
-  };
+  simulationLifecycleIncomplete: boolean;
 }
 
 export function ChatPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isConversationListOpen, setIsConversationListOpen] = useState(false);
   const [conversationListVersion, setConversationListVersion] = useState(0);
   const restoreAttempt = useRef<string | null>(null);
+  const activeRunProjectionRestore = useRef(false);
+  const activeRunProjectionSession = useRef<string | null>(null);
   const [askUserQuestion, setAskUserQuestion] =
     useState<AskUserQuestionStreamResponse | null>(null);
   const [toolPermissions, setToolPermissions] = useState<
@@ -126,26 +120,6 @@ export function ChatPage() {
   // Permission mode state management
   const { permissionMode, setPermissionMode } = usePermissionMode();
 
-  // Get encoded name for current working directory
-  const getEncodedName = useCallback(() => {
-    if (!workingDirectory || !projects.length) {
-      return null;
-    }
-
-    const project = projects.find((p) => p.path === workingDirectory);
-
-    // Normalize paths for comparison (handle Windows path issues)
-    const normalizedWorking = normalizeWindowsPath(workingDirectory);
-    const normalizedProject = projects.find(
-      (p) => normalizeWindowsPath(p.path) === normalizedWorking,
-    );
-
-    // Use normalized result if exact match fails
-    const finalProject = project || normalizedProject;
-
-    return finalProject?.encodedName || null;
-  }, [workingDirectory, projects]);
-
   // Load conversation history if sessionId is provided
   const {
     messages: historyMessages,
@@ -153,14 +127,37 @@ export function ChatPage() {
     loading: historyLoading,
     error: historyError,
     sessionId: loadedSessionId,
-  } = useAutoHistoryLoader(
-    getEncodedName() || undefined,
-    sessionId || undefined,
-  );
+  } = useAutoHistoryLoader(workingDirectory, sessionId || undefined);
 
   useEffect(() => {
-    setTaskProjection(replayTaskMessages(historySdkMessages));
-  }, [historySdkMessages]);
+    if (activeRunProjectionRestore.current) return;
+
+    const nextTaskProjection = replayTaskMessages(historySdkMessages);
+    const nextSimulation = replaySimulationMessages(historySdkMessages);
+    const protectedSession = activeRunProjectionSession.current;
+
+    // A refreshed live run is replayed from the run event log first. The
+    // canonical SessionStore transcript can arrive a moment later (or still be
+    // empty while eager flushing finishes), so an empty history projection
+    // must not erase the already replayed simulation UI for that same session.
+    if (
+      protectedSession &&
+      (!loadedSessionId || loadedSessionId === protectedSession) &&
+      nextSimulation.status === "idle"
+    ) {
+      return;
+    }
+
+    if (
+      protectedSession &&
+      loadedSessionId &&
+      loadedSessionId !== protectedSession
+    ) {
+      activeRunProjectionSession.current = null;
+    }
+    setTaskProjection(nextTaskProjection);
+    setSimulation(nextSimulation);
+  }, [historySdkMessages, loadedSessionId]);
 
   const handleSdkMessage = useCallback((message: SDKMessage) => {
     setTaskProjection((current) => reduceTaskMessage(current, message));
@@ -172,43 +169,7 @@ export function ChatPage() {
 
   const handleSimulationEvent = useCallback(
     (event: SimulationLifecycleEvent) => {
-      if (event.kind === "scenarios_generated") {
-        setSimulation({
-          status: "ready",
-          scenarios: event.scenarios,
-          results: {},
-          runningScenarioIds: [],
-          scenarioErrors: {},
-        });
-        return;
-      }
-      const completedResults =
-        event.kind === "simulation_batch_completed"
-          ? event.results
-          : [event.result];
-      setSimulation((current) => {
-        const completedIds = new Set(
-          completedResults.map((result) => result.scenarioId),
-        );
-        const runningScenarioIds = current.runningScenarioIds.filter(
-          (id) => !completedIds.has(id),
-        );
-        const scenarioErrors = { ...current.scenarioErrors };
-        for (const id of completedIds) delete scenarioErrors[id];
-        return {
-          ...current,
-          status: runningScenarioIds.length > 0 ? "running" : "ready",
-          runningScenarioIds,
-          scenarioErrors,
-          error: undefined,
-          results: {
-            ...current.results,
-            ...Object.fromEntries(
-              completedResults.map((result) => [result.scenarioId, result]),
-            ),
-          },
-        };
-      });
+      setSimulation((current) => reduceSimulationEvent(current, event));
     },
     [],
   );
@@ -283,7 +244,6 @@ export function ChatPage() {
       runId: string,
       initialResponse: Response,
       initialSessionId: string | null,
-      simulationCommand?: SimulationCommand,
     ): Promise<RunStreamResult> => {
       let response = initialResponse;
       let resolvedSessionId = initialSessionId;
@@ -293,6 +253,7 @@ export function ChatPage() {
       let lastSequence = 0;
       let terminal = false;
       let simulationEventReceived = false;
+      let localSimulation = simulation;
 
       const streamingContext: StreamingContext = {
         get currentAssistantMessage() {
@@ -332,11 +293,18 @@ export function ChatPage() {
         const envelope = JSON.parse(line) as {
           type?: string;
           sequence?: number;
+          event?: SimulationLifecycleEvent;
         };
         if (typeof envelope.sequence === "number") {
           lastSequence = Math.max(lastSequence, envelope.sequence);
         }
-        simulationEventReceived ||= envelope.type === "simulation_event";
+        if (envelope.type === "simulation_event" && envelope.event) {
+          simulationEventReceived = true;
+          localSimulation = reduceSimulationEvent(
+            localSimulation,
+            envelope.event,
+          );
+        }
         terminal =
           envelope.type === "done" ||
           envelope.type === "error" ||
@@ -348,17 +316,19 @@ export function ChatPage() {
               envelope.type === "error" ? "failed" : "stopped",
             ),
           );
-          if (simulationCommand) {
-            setSimulation((current) => ({
-              ...current,
-              status: "error",
-              runningScenarioIds: [],
-              error:
-                envelope.type === "error"
-                  ? "模拟测试运行失败，请稍后重试。"
-                  : "模拟测试已停止。",
-            }));
-          }
+          setSimulation((current) =>
+            current.status === "designing" || current.status === "running"
+              ? {
+                  ...current,
+                  status: "error",
+                  runningScenarioIds: [],
+                  error:
+                    envelope.type === "error"
+                      ? "模拟测试运行失败，请稍后重试。"
+                      : "模拟测试已停止。",
+                }
+              : current,
+          );
         }
         processStreamLine(line, streamingContext);
       };
@@ -383,6 +353,10 @@ export function ChatPage() {
         sessionId: resolvedSessionId,
         terminal,
         simulationEventReceived,
+        simulationLifecycleIncomplete:
+          simulationEventReceived &&
+          (localSimulation.status === "designing" ||
+            localSimulation.status === "running"),
       };
     },
     [
@@ -394,6 +368,7 @@ export function ChatPage() {
       handleToolPermission,
       hasShownInitMessage,
       processStreamLine,
+      simulation,
       setCurrentAssistantMessage,
       setCurrentSessionId,
       setHasReceivedInit,
@@ -455,7 +430,6 @@ export function ChatPage() {
           requestId,
           response,
           currentSessionId,
-          simulationCommand,
         );
       } catch (error) {
         console.error("Failed to send message:", error);
@@ -465,14 +439,16 @@ export function ChatPage() {
           content: "Error: Failed to get response",
           timestamp: Date.now(),
         });
-        if (simulationCommand) {
-          setSimulation((current) => ({
-            ...current,
-            status: "error",
-            runningScenarioIds: [],
-            error: "无法启动模拟测试，请检查服务后重试。",
-          }));
-        }
+        setSimulation((current) =>
+          current.status === "designing" || current.status === "running"
+            ? {
+                ...current,
+                status: "error",
+                runningScenarioIds: [],
+                error: "无法启动模拟测试，请检查服务后重试。",
+              }
+            : current,
+        );
       } finally {
         setConversationListVersion((version) => version + 1);
         if (!runAccepted || streamResult?.terminal) {
@@ -489,16 +465,20 @@ export function ChatPage() {
         closePlanModeRequest();
         resetRequestState();
         if (
-          simulationCommand &&
           streamResult?.terminal &&
-          !streamResult.simulationEventReceived
+          (!streamResult.simulationEventReceived ||
+            streamResult.simulationLifecycleIncomplete)
         ) {
-          setSimulation((current) => ({
-            ...current,
-            status: "error",
-            runningScenarioIds: [],
-            error: "Agent 已结束，但没有返回有效的结构化结果，请重试。",
-          }));
+          setSimulation((current) =>
+            current.status === "designing" || current.status === "running"
+              ? {
+                  ...current,
+                  status: "error",
+                  runningScenarioIds: [],
+                  error: "Agent 已结束，但没有返回有效的结构化结果，请重试。",
+                }
+              : current,
+          );
         }
       }
     },
@@ -601,6 +581,7 @@ export function ChatPage() {
       null,
     );
     if (!stored?.runId) return;
+    activeRunProjectionRestore.current = true;
 
     const restoreRun = async () => {
       let runResponse: Response;
@@ -608,15 +589,18 @@ export function ChatPage() {
         runResponse = await fetch(getRunUrl(stored.runId!));
       } catch (error) {
         console.error("Failed to inspect active run:", error);
+        activeRunProjectionRestore.current = false;
         restoreAttempt.current = null;
         return;
       }
 
       if (runResponse.status === 404) {
+        activeRunProjectionRestore.current = false;
         removeStorageItem(activeRunKey);
         return;
       }
       if (!runResponse.ok) {
+        activeRunProjectionRestore.current = false;
         restoreAttempt.current = null;
         return;
       }
@@ -629,9 +613,13 @@ export function ChatPage() {
           normalizeWindowsPath(run.request.workingDirectory) !==
             normalizeWindowsPath(workingDirectory))
       ) {
+        activeRunProjectionRestore.current = false;
         removeStorageItem(activeRunKey);
         return;
       }
+
+      activeRunProjectionSession.current =
+        run.sessionId || run.request.sessionId || null;
 
       const startedAt = new Date(run.createdAt).getTime();
       setMessages([
@@ -655,8 +643,21 @@ export function ChatPage() {
           ),
         ),
       );
+      setSimulation(
+        replaySimulationMessages(
+          historySdkMessages.filter(
+            (message) =>
+              !Number.isFinite(startedAt) ||
+              new Date(message.timestamp).getTime() < startedAt,
+          ),
+        ),
+      );
       setAgentProjection(createEmptyAgentProjection());
-      if (run.request.simulation?.action === "design") {
+      if (
+        run.request.simulation?.action === "design" ||
+        (run.request.simulation?.action === "orchestrate" &&
+          run.request.simulation.startsWith === "design")
+      ) {
         setSimulation({
           status: "designing",
           scenarios: [],
@@ -664,6 +665,16 @@ export function ChatPage() {
           runningScenarioIds: [],
           scenarioErrors: {},
         });
+      } else if (
+        run.request.simulation?.action === "orchestrate" &&
+        run.request.simulation.startsWith === "run"
+      ) {
+        setSimulation((current) => ({
+          ...current,
+          status: "running",
+          runningScenarioIds: current.scenarios.map(({ id }) => id),
+          error: undefined,
+        }));
       } else if (run.request.simulation?.action === "run") {
         setSimulation({
           status: "running",
@@ -700,19 +711,22 @@ export function ChatPage() {
           run.id,
           eventsResponse,
           run.sessionId || run.request.sessionId || null,
-          run.request.simulation,
         );
         if (
-          run.request.simulation &&
           result.terminal &&
-          !result.simulationEventReceived
+          (!result.simulationEventReceived ||
+            result.simulationLifecycleIncomplete)
         ) {
-          setSimulation((current) => ({
-            ...current,
-            status: "error",
-            runningScenarioIds: [],
-            error: "Agent 已结束，但没有返回有效的结构化结果，请重试。",
-          }));
+          setSimulation((current) =>
+            current.status === "designing" || current.status === "running"
+              ? {
+                  ...current,
+                  status: "error",
+                  runningScenarioIds: [],
+                  error: "Agent 已结束，但没有返回有效的结构化结果，请重试。",
+                }
+              : current,
+          );
         }
         if (result.terminal) removeStorageItem(activeRunKey);
         if (!sessionId && result.sessionId) {
@@ -731,6 +745,7 @@ export function ChatPage() {
         });
         restoreAttempt.current = null;
       } finally {
+        activeRunProjectionRestore.current = false;
         setConversationListVersion((version) => version + 1);
         setAskUserQuestion(null);
         setToolPermissions([]);
@@ -989,22 +1004,6 @@ export function ChatPage() {
 
   const handleSettingsClose = useCallback(() => {
     setIsSettingsOpen(false);
-  }, []);
-
-  // Load projects to get encodedName mapping
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const response = await fetch(getProjectsUrl());
-        if (response.ok) {
-          const data = await response.json();
-          setProjects(data.projects || []);
-        }
-      } catch (error) {
-        console.error("Failed to load projects:", error);
-      }
-    };
-    loadProjects();
   }, []);
 
   const handleBackToProjects = useCallback(() => {

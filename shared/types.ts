@@ -81,6 +81,11 @@ export interface SimulationScenario {
 }
 
 export type SimulationCommand =
+  | {
+      action: "orchestrate";
+      startsWith: "design" | "run";
+      runAfterDesign: boolean;
+    }
   | { action: "design" }
   | { action: "run"; scenario: SimulationScenario }
   | { action: "run_all"; scenarios: SimulationScenario[] };
@@ -111,9 +116,12 @@ export interface SimulationRunResult {
 }
 
 export type SimulationLifecycleEvent =
+  | { kind: "design_started"; runAfterDesign?: boolean }
   | { kind: "scenarios_generated"; scenarios: SimulationScenario[] }
+  | { kind: "run_started"; scenarioIds: string[] }
   | { kind: "simulation_completed"; result: SimulationRunResult }
-  | { kind: "simulation_batch_completed"; results: SimulationRunResult[] };
+  | { kind: "simulation_batch_completed"; results: SimulationRunResult[] }
+  | { kind: "simulation_failed"; error: string };
 
 export interface SimulationEventStreamResponse {
   type: "simulation_event";

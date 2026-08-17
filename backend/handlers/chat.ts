@@ -2,6 +2,7 @@ import {
   getSessionMessages,
   InMemorySessionStore,
   query,
+  type HookCallback,
   type Options,
   type SDKMessage,
   type SessionStore,
@@ -20,8 +21,12 @@ import { logger } from "../utils/logger.ts";
 import { PendingInteractions } from "./interactions.ts";
 import { FDE_MAIN_AGENT, projectAgentEvents } from "../agents.ts";
 import {
-  projectSimulationEvent,
+  createSimulationReporter,
+  inferSimulationCommand,
+  projectSimulationEvents,
   readSimulationCommand,
+  SimulationLifecycleTracker,
+  SIMULATION_REPORT_TOOL_NAME,
   simulationOutputFormat,
   simulationSystemPrompt,
 } from "../simulation.ts";
@@ -182,14 +187,22 @@ export class ChatRunManager {
       throw new Error("Run already exists");
     }
 
+    const inferredSimulation =
+      request.simulation ??
+      (this.fdeSuitePluginDir && request.runMode !== "sandbox_test"
+        ? inferSimulationCommand(request.message)
+        : undefined);
+    const normalizedRequest = inferredSimulation
+      ? { ...request, simulation: inferredSimulation }
+      : request;
     const run: ActiveRun = {
-      request,
+      request: normalizedRequest,
       abortController: new AbortController(),
       subscribers: new Set(),
     };
     this.active.set(request.requestId, run);
     this.requestAbortControllers.set(request.requestId, run.abortController);
-    this.runStore.createRun(request.requestId, request);
+    this.runStore.createRun(request.requestId, normalizedRequest);
     void this.execute(run);
     return request.requestId;
   }
@@ -247,14 +260,85 @@ export class ChatRunManager {
       request as unknown as Record<string, unknown>,
     );
 
+    const simulation = request.simulation;
+    const simulationTracker = simulation
+      ? new SimulationLifecycleTracker(simulation)
+      : undefined;
+
+    const emitSimulation = (
+      event: Parameters<SimulationLifecycleTracker["accept"]>[0],
+    ) => {
+      const rejection = simulationTracker?.accept(event);
+      if (!rejection) {
+        this.emit(request.requestId, { type: "simulation_event", event });
+      }
+      return rejection;
+    };
+
+    if (
+      simulation?.action === "design" ||
+      (simulation?.action === "orchestrate" &&
+        simulation.startsWith === "design")
+    ) {
+      emitSimulation({
+        kind: "design_started",
+        ...(simulation.action === "orchestrate"
+          ? { runAfterDesign: simulation.runAfterDesign }
+          : {}),
+      });
+    }
+
     const appendedSystemPrompt = [
       request.systemPrompt,
-      request.simulation
-        ? simulationSystemPrompt(request.simulation)
-        : undefined,
+      simulation ? simulationSystemPrompt(simulation) : undefined,
     ]
       .filter((value): value is string => Boolean(value))
       .join("\n\n");
+
+    const simulationReporter =
+      simulation && this.fdeSuitePluginDir && request.runMode !== "sandbox_test"
+        ? createSimulationReporter((event) => {
+            return emitSimulation(event);
+          })
+        : undefined;
+    const allowedTools = simulationReporter
+      ? [
+          ...new Set([
+            ...(request.allowedTools ?? []),
+            SIMULATION_REPORT_TOOL_NAME,
+          ]),
+        ]
+      : request.allowedTools;
+
+    const simulationPreToolHook: HookCallback = async (input) => {
+      if (!simulation || input.hook_event_name !== "PreToolUse") return {};
+      if (input.agent_id) return {};
+
+      const allowedRootTools = new Set([
+        "Task",
+        "Agent",
+        "TaskOutput",
+        "TaskStop",
+        "StructuredOutput",
+        SIMULATION_REPORT_TOOL_NAME,
+      ]);
+      if (!allowedRootTools.has(input.tool_name)) {
+        return denyTool(
+          "模拟测试主 Agent 只能调度指定角色、等待角色结果并上报结构化状态",
+        );
+      }
+      if (["Agent", "Task"].includes(input.tool_name)) {
+        const toolInput = isObject(input.tool_input) ? input.tool_input : {};
+        const subagentType = toolInput.subagent_type;
+        if (
+          typeof subagentType !== "string" ||
+          !allowedSimulationAgents(simulation).has(subagentType)
+        ) {
+          return denyTool("模拟测试只能调用协议指定的隔离角色 Agent");
+        }
+      }
+      return {};
+    };
 
     const options: Options = {
       abortController,
@@ -267,12 +351,15 @@ export class ChatRunManager {
       ...(this.fdeSuitePluginDir
         ? {
             plugins: [{ type: "local" as const, path: this.fdeSuitePluginDir }],
-            ...(request.runMode === "sandbox_test" || request.simulation
+            ...(request.runMode === "sandbox_test"
               ? {}
               : { agent: FDE_MAIN_AGENT }),
           }
         : {}),
-      ...(request.simulation
+      ...(simulationReporter
+        ? { mcpServers: { webui: simulationReporter } }
+        : {}),
+      ...(simulation
         ? {
             tools: [
               "Task",
@@ -282,14 +369,12 @@ export class ChatRunManager {
               "Glob",
               "Grep",
             ],
-            outputFormat: simulationOutputFormat(request.simulation),
+            outputFormat: simulationOutputFormat(simulation),
           }
         : {}),
       ...(request.newSessionId ? { sessionId: request.newSessionId } : {}),
       ...(request.sessionId ? { resume: request.sessionId } : {}),
-      ...(!request.simulation && request.allowedTools
-        ? { allowedTools: request.allowedTools }
-        : {}),
+      ...(allowedTools ? { allowedTools } : {}),
       ...(request.workingDirectory ? { cwd: request.workingDirectory } : {}),
       ...(request.additionalDirectories
         ? { additionalDirectories: request.additionalDirectories }
@@ -309,17 +394,26 @@ export class ChatRunManager {
       ...(request.permissionMode === "bypassPermissions"
         ? { allowDangerouslySkipPermissions: true }
         : {}),
+      ...(simulation
+        ? { hooks: { PreToolUse: [{ hooks: [simulationPreToolHook] }] } }
+        : {}),
       sessionStore: this.sessionStore,
       sessionStoreFlush: "eager",
       loadTimeoutMs: 90_000,
       canUseTool: async (toolName, input, permissionOptions) => {
         if (
-          request.simulation &&
-          ["Task", "Agent", "StructuredOutput"].includes(toolName)
+          simulation &&
+          [
+            "Task",
+            "Agent",
+            "TaskOutput",
+            "TaskStop",
+            "StructuredOutput",
+          ].includes(toolName)
         ) {
           return { behavior: "allow", updatedInput: input };
         }
-        if (request.simulation && ["Read", "Glob", "Grep"].includes(toolName)) {
+        if (simulation && ["Read", "Glob", "Grep"].includes(toolName)) {
           return permissionOptions.agentID
             ? { behavior: "allow", updatedInput: input }
             : {
@@ -408,10 +502,10 @@ export class ChatRunManager {
       for (const event of projectAgentEvents(sdkMessage)) {
         this.emit(request.requestId, { type: "agent_event", event });
       }
-      if (request.simulation) {
-        const event = projectSimulationEvent(request.simulation, sdkMessage);
-        if (event) {
-          this.emit(request.requestId, { type: "simulation_event", event });
+      if (simulation) {
+        for (const event of projectSimulationEvents(simulation, sdkMessage)) {
+          const rejection = emitSimulation(event);
+          if (rejection) throw new Error(rejection);
         }
       }
     };
@@ -536,6 +630,14 @@ export class ChatRunManager {
         );
       }
 
+      if (!abortController.signal.aborted) {
+        const incomplete = simulationTracker?.incompleteReason();
+        if (incomplete) {
+          emitSimulation({ kind: "simulation_failed", error: incomplete });
+          throw new Error(incomplete);
+        }
+      }
+
       if (abortController.signal.aborted) {
         status = "aborted";
         this.emit(request.requestId, { type: "aborted" });
@@ -610,6 +712,36 @@ function readSessionId(message: unknown): string | undefined {
   if (!isObject(message)) return undefined;
   const value = message.session_id;
   return typeof value === "string" && value ? value : undefined;
+}
+
+function denyTool(reason: string) {
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse" as const,
+      permissionDecision: "deny" as const,
+      permissionDecisionReason: reason,
+    },
+  };
+}
+
+function allowedSimulationAgents(
+  command: NonNullable<ChatRequest["simulation"]>,
+): Set<string> {
+  const agents = new Set<string>();
+  const needsDesign =
+    command.action === "design" ||
+    (command.action === "orchestrate" && command.startsWith === "design");
+  const needsRun =
+    command.action === "run" ||
+    command.action === "run_all" ||
+    (command.action === "orchestrate" && command.runAfterDesign);
+  if (needsDesign) agents.add("fde-suite:fde-scenario-designer");
+  if (needsRun) {
+    agents.add("fde-suite:fde-customer-simulator");
+    agents.add("fde-suite:fde-business-agent");
+    agents.add("fde-suite:fde-evaluator");
+  }
+  return agents;
 }
 
 function readChatRequest(value: unknown): ChatRequest | null {

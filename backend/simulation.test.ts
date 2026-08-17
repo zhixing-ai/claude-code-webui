@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
+  inferSimulationCommand,
   projectSimulationEvent,
+  projectSimulationEvents,
+  readSimulationLifecycleEvent,
   readSimulationCommand,
   simulationOutputFormat,
   simulationSystemPrompt,
+  SimulationLifecycleTracker,
 } from "./simulation.ts";
 
 const scenario = {
@@ -27,6 +31,38 @@ const scenario = {
 };
 
 describe("simulation workflow", () => {
+  it("recognizes simulation commands without treating questions as commands", () => {
+    expect(
+      inferSimulationCommand(
+        "接下来我们直接生成模拟测试的场景，case并开始测试吧。",
+      ),
+    ).toEqual({
+      action: "orchestrate",
+      startsWith: "design",
+      runAfterDesign: true,
+    });
+    expect(inferSimulationCommand("重新设计场景并重考")).toEqual({
+      action: "orchestrate",
+      startsWith: "design",
+      runAfterDesign: true,
+    });
+    expect(inferSimulationCommand("重新测试这些场景")).toEqual({
+      action: "orchestrate",
+      startsWith: "run",
+      runAfterDesign: true,
+    });
+    expect(inferSimulationCommand("只生成模拟测试场景，不开始测试")).toEqual({
+      action: "orchestrate",
+      startsWith: "design",
+      runAfterDesign: false,
+    });
+    expect(inferSimulationCommand("为什么模拟测试没有显示？")).toBeUndefined();
+    expect(inferSimulationCommand("我不想生成测试场景")).toBeUndefined();
+    expect(
+      inferSimulationCommand("你确认一下，为什么重新测试没有刷新？"),
+    ).toBeUndefined();
+  });
+
   it("validates commands and installs the matching structured output schema", () => {
     expect(readSimulationCommand({ action: "design" })).toEqual({
       action: "design",
@@ -59,6 +95,19 @@ describe("simulation workflow", () => {
     expect(
       simulationSystemPrompt({ action: "run_all", scenarios: [scenario] }),
     ).toContain("同一条 assistant 消息中同时发出");
+  });
+
+  it("requires orchestrated simulation requests to report UI state", () => {
+    const prompt = simulationSystemPrompt({
+      action: "orchestrate",
+      startsWith: "design",
+      runAfterDesign: true,
+    });
+    expect(prompt).toContain("mcp__webui__publish_simulation_state");
+    expect(prompt).toContain("禁止完成一个场景后再开始下一个场景");
+    expect(prompt).toContain("scenarios_generated");
+    expect(prompt).toContain("simulation_completed");
+    expect(prompt).toContain("禁止调用 Skill、Bash");
   });
 
   it("projects valid scenario and run results from SDK structured output", () => {
@@ -96,11 +145,58 @@ describe("simulation workflow", () => {
       } as SDKMessage),
     ).toEqual({ kind: "simulation_completed", result });
     expect(
-      projectSimulationEvent({ action: "run_all", scenarios: [scenario] }, {
+      projectSimulationEvents({ action: "run_all", scenarios: [scenario] }, {
         type: "result",
         subtype: "success",
         structured_output: { results: [result] },
       } as SDKMessage),
-    ).toEqual({ kind: "simulation_batch_completed", results: [result] });
+    ).toEqual([
+      { kind: "run_started", scenarioIds: [scenario.id] },
+      { kind: "simulation_batch_completed", results: [result] },
+    ]);
+
+    expect(
+      projectSimulationEvents(
+        {
+          action: "orchestrate",
+          startsWith: "design",
+          runAfterDesign: true,
+        },
+        {
+          type: "result",
+          subtype: "success",
+          structured_output: { scenarios: [scenario], results: [result] },
+        } as SDKMessage,
+      ),
+    ).toEqual([
+      { kind: "scenarios_generated", scenarios: [scenario] },
+      { kind: "run_started", scenarioIds: [scenario.id] },
+      { kind: "simulation_batch_completed", results: [result] },
+    ]);
+  });
+
+  it("validates live reports before they reach the UI", () => {
+    expect(
+      readSimulationLifecycleEvent({
+        kind: "scenarios_generated",
+        scenarios: [scenario],
+      }),
+    ).toEqual({ kind: "scenarios_generated", scenarios: [scenario] });
+    expect(
+      readSimulationLifecycleEvent({
+        kind: "run_started",
+        scenarioIds: [scenario.id, scenario.id],
+      }),
+    ).toBeUndefined();
+  });
+
+  it("fails closed when a simulation lifecycle stops after its start event", () => {
+    const tracker = new SimulationLifecycleTracker({
+      action: "orchestrate",
+      startsWith: "design",
+      runAfterDesign: true,
+    });
+    tracker.accept({ kind: "design_started", runAfterDesign: true });
+    expect(tracker.incompleteReason()).toBe("Agent 未上报生成的模拟测试场景");
   });
 });

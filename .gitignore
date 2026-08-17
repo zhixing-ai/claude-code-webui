@@ -1,4 +1,5 @@
 .claude/
+.playwright-cli/
 !.claude/settings.json
 .env
 .env.local
@@ -16,6 +17,8 @@ frontend/demo-recordings/
 frontend/test-results/
 frontend/playwright-report/
 frontend/playwright/.cache/
+
+output/
 
 # Local feature worktrees
 .worktrees/

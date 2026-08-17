@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AllMessage, TimestampedSDKMessage } from "../types";
 import type { ConversationHistory } from "../../../shared/types";
-import { getConversationUrl } from "../config/api";
+import { getSessionMessagesUrl } from "../config/api";
 import { useMessageConverter } from "./useMessageConverter";
 
 interface HistoryLoaderState {
@@ -13,7 +13,7 @@ interface HistoryLoaderState {
 }
 
 interface HistoryLoaderResult extends HistoryLoaderState {
-  loadHistory: (projectPath: string, sessionId: string) => Promise<void>;
+  loadHistory: (directory: string, sessionId: string) => Promise<void>;
   clearHistory: () => void;
 }
 
@@ -45,11 +45,11 @@ export function useHistoryLoader(): HistoryLoaderResult {
   const { convertConversationHistory } = useMessageConverter();
 
   const loadHistory = useCallback(
-    async (encodedProjectName: string, sessionId: string) => {
-      if (!encodedProjectName || !sessionId) {
+    async (directory: string, sessionId: string) => {
+      if (!directory || !sessionId) {
         setState((prev) => ({
           ...prev,
-          error: "Encoded project name and session ID are required",
+          error: "Working directory and session ID are required",
         }));
         return;
       }
@@ -62,7 +62,7 @@ export function useHistoryLoader(): HistoryLoaderResult {
         }));
 
         const response = await fetch(
-          getConversationUrl(encodedProjectName, sessionId),
+          getSessionMessagesUrl(directory, sessionId),
         );
 
         if (!response.ok) {
@@ -139,20 +139,20 @@ export function useHistoryLoader(): HistoryLoaderResult {
  * Hook for loading conversation history on mount when sessionId is provided
  */
 export function useAutoHistoryLoader(
-  encodedProjectName?: string,
+  directory?: string,
   sessionId?: string,
 ): HistoryLoaderResult {
   const historyLoader = useHistoryLoader();
 
   useEffect(() => {
-    if (encodedProjectName && sessionId) {
-      historyLoader.loadHistory(encodedProjectName, sessionId);
+    if (directory && sessionId) {
+      historyLoader.loadHistory(directory, sessionId);
     } else if (!sessionId) {
-      // Only clear if there's no sessionId - don't clear while waiting for encodedProjectName
+      // Only clear if there's no sessionId - don't clear while waiting for the directory.
       historyLoader.clearHistory();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [encodedProjectName, sessionId]);
+  }, [directory, sessionId]);
 
   return historyLoader;
 }

@@ -4,18 +4,33 @@ import { handleChatRequest } from "./chat";
 import type { ChatRequest } from "../../shared/types";
 import { getSessionMessages, query } from "@anthropic-ai/claude-agent-sdk";
 import { PendingInteractions } from "./interactions";
+import { MemoryRunStore } from "../state/memory";
 
 // Define minimal mock types for Claude Code SDK to maintain type safety in tests
 type MockClaudeCode = {
-  getSessionMessages: typeof vi.fn;
-  query: typeof vi.fn;
+  createSdkMcpServer: ReturnType<typeof vi.fn>;
+  getSessionMessages: ReturnType<typeof vi.fn>;
+  query: ReturnType<typeof vi.fn>;
   InMemorySessionStore: new () => object;
+  tool: ReturnType<typeof vi.fn>;
 };
 
 vi.mock("@anthropic-ai/claude-agent-sdk", (): MockClaudeCode => ({
+  createSdkMcpServer: vi.fn((options) => ({
+    type: "sdk",
+    name: options.name,
+    instance: {},
+    tools: options.tools,
+  })),
   getSessionMessages: vi.fn(),
   query: vi.fn(),
   InMemorySessionStore: class {},
+  tool: vi.fn((name, description, inputSchema, handler) => ({
+    name,
+    description,
+    inputSchema,
+    handler,
+  })),
 }));
 
 // Mock logger
@@ -1285,6 +1300,148 @@ describe("Chat Handler - Permission Mode Tests", () => {
 });
 
 describe("Chat Handler - Simulation workflow", () => {
+  it("turns an ordinary simulation request into the restricted workflow", async () => {
+    vi.clearAllMocks();
+    const scenario = {
+      id: "negotiation",
+      title: "讨价还价",
+      stage: "成交",
+      description: "成交前争取权益",
+      persona: "关注总价的客户",
+      objective: "守住边界并推进成交",
+      cases: [
+        {
+          id: "discount",
+          title: "要求折扣",
+          customerGoal: "获得折扣",
+          openingMessage: "能优惠吗？",
+          expectedBehaviors: ["确认诉求"],
+          passCriteria: ["不越权"],
+        },
+      ],
+    };
+    const result = {
+      scenarioId: scenario.id,
+      summary: "完成",
+      cases: [
+        {
+          caseId: "discount",
+          verdict: "passed",
+          score: 90,
+          transcript: [
+            { role: "customer", content: "能优惠吗？" },
+            { role: "sales", content: "我先确认可用权益。" },
+          ],
+          evaluation: "没有越权",
+          strengths: ["边界清楚"],
+          issues: [],
+        },
+      ],
+    };
+    mockQuery.mockReturnValue({
+      [Symbol.asyncIterator]: async function* () {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "builder-session",
+        } as any;
+        yield {
+          type: "result",
+          subtype: "success",
+          structured_output: { scenarios: [scenario], results: [result] },
+          session_id: "builder-session",
+        } as any;
+      },
+    } as any);
+    const runStore = new MemoryRunStore();
+    const context = {
+      req: {
+        json: vi.fn().mockResolvedValue({
+          message: "接下来我们直接生成模拟测试的场景，case并开始测试吧。",
+          requestId: "natural-simulation-run",
+        }),
+      },
+      var: {
+        config: { fdeSuitePluginDir: "/opt/fde-suite", runStore },
+      },
+    } as unknown as Context;
+
+    const response = await handleChatRequest(
+      context,
+      new Map<string, AbortController>(),
+      new PendingInteractions(),
+    );
+    const body = await response.text();
+    const options = mockQuery.mock.calls[0]?.[0].options;
+
+    expect(options?.agent).toBe("fde-suite:fde-builder");
+    expect(options?.allowedTools).toContain(
+      "mcp__webui__publish_simulation_state",
+    );
+    expect(options?.tools).toEqual([
+      "Task",
+      "Agent",
+      "StructuredOutput",
+      "Read",
+      "Glob",
+      "Grep",
+    ]);
+    expect(options?.tools).not.toContain("Bash");
+    expect(options?.tools).not.toContain("Skill");
+    expect(options?.outputFormat).toMatchObject({
+      type: "json_schema",
+      schema: { required: ["scenarios", "results"] },
+    });
+    expect(options?.systemPrompt).toMatchObject({
+      append: expect.stringContaining("fde-suite:fde-scenario-designer"),
+    });
+    expect(body).toContain('"kind":"design_started"');
+    expect(body).toContain('"kind":"scenarios_generated"');
+    expect(body).toContain('"kind":"simulation_batch_completed"');
+    expect(body).toContain('"type":"done"');
+    expect(
+      runStore.getRun("natural-simulation-run")?.request.simulation,
+    ).toEqual({
+      action: "orchestrate",
+      startsWith: "design",
+      runAfterDesign: true,
+    });
+  });
+
+  it("fails the run when an inferred workflow reports only that design started", async () => {
+    vi.clearAllMocks();
+    mockQuery.mockReturnValue({
+      [Symbol.asyncIterator]: async function* () {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "incomplete-session",
+        } as any;
+      },
+    } as any);
+    const context = {
+      req: {
+        json: vi.fn().mockResolvedValue({
+          message: "生成模拟测试场景并开始测试",
+          requestId: "incomplete-simulation-run",
+        }),
+      },
+      var: { config: { fdeSuitePluginDir: "/opt/fde-suite" } },
+    } as unknown as Context;
+
+    const response = await handleChatRequest(
+      context,
+      new Map<string, AbortController>(),
+      new PendingInteractions(),
+    );
+    const body = await response.text();
+
+    expect(body).toContain('"kind":"simulation_failed"');
+    expect(body).toContain("Agent 未上报生成的模拟测试场景");
+    expect(body).toContain('"type":"error"');
+    expect(body).not.toContain('"type":"done"');
+  });
+
   it("loads the plugin without the builder agent in sandbox test mode", async () => {
     vi.clearAllMocks();
     mockQuery.mockReturnValue({
@@ -1427,8 +1584,11 @@ describe("Chat Handler - Simulation workflow", () => {
     expect(body).toContain('"kind":"scenarios_generated"');
     const options = mockQuery.mock.calls[0]?.[0].options;
     if (!options) throw new Error("Expected query options");
-    expect(options.agent).toBeUndefined();
-    expect(options.allowedTools).toBeUndefined();
+    expect(options.agent).toBe("fde-suite:fde-builder");
+    expect(options.allowedTools).toContain(
+      "mcp__webui__publish_simulation_state",
+    );
+    expect(options.mcpServers).toHaveProperty("webui");
     await expect(
       options.canUseTool?.(
         "Agent",
@@ -1444,5 +1604,42 @@ describe("Chat Handler - Simulation workflow", () => {
     await expect(
       options.canUseTool?.("Read", { file_path: "merchant.md" }, {} as any),
     ).resolves.toMatchObject({ behavior: "deny" });
+    const preToolUse = options.hooks?.PreToolUse?.[0]?.hooks[0];
+    if (!preToolUse) throw new Error("Expected simulation PreToolUse hook");
+    await expect(
+      preToolUse(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Read",
+          tool_input: { file_path: "merchant.md" },
+          tool_use_id: "read-root",
+          session_id: "simulation-session",
+          transcript_path: "/tmp/transcript",
+          cwd: "/workspace",
+          permission_mode: "bypassPermissions",
+        },
+        "read-root",
+        { signal: new AbortController().signal },
+      ),
+    ).resolves.toMatchObject({
+      hookSpecificOutput: { permissionDecision: "deny" },
+    });
+    await expect(
+      preToolUse(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Read",
+          tool_input: { file_path: "merchant.md" },
+          tool_use_id: "read-agent",
+          session_id: "simulation-session",
+          transcript_path: "/tmp/transcript",
+          cwd: "/workspace",
+          agent_id: "scenario-agent",
+          permission_mode: "bypassPermissions",
+        },
+        "read-agent",
+        { signal: new AbortController().signal },
+      ),
+    ).resolves.toEqual({});
   });
 });
