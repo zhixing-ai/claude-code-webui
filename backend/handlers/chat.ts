@@ -47,6 +47,24 @@ const CONTEXT_LIMIT =
   /prompt is too long|exceeded model token limit|conversation too long/i;
 export const SANDBOX_TEST_WORKING_DIRECTORY = "/home/user/workspace/chat";
 const SANDBOX_TEST_SKILL = "private-domain-sales";
+const MANAGED_AUTO_ALLOWED_TOOLS = [
+  "Agent",
+  "Bash",
+  "Edit",
+  "Glob",
+  "Grep",
+  "Monitor",
+  "NotebookEdit",
+  "Read",
+  "Skill",
+  "StructuredOutput",
+  "Task",
+  "TaskOutput",
+  "TaskStop",
+  "WebFetch",
+  "WebSearch",
+  "Write",
+] as const;
 
 function isSandboxTestToolAllowed(toolName: string, input: unknown): boolean {
   if (!isObject(input)) return false;
@@ -324,9 +342,12 @@ export class ChatRunManager {
         : undefined;
     const managedProductRun = request.runMode === "builder" || sandboxTest;
     const requestedAllowedTools = managedProductRun
-      ? request.allowedTools?.filter(
-          (tool) => !tool.startsWith("AskUserQuestion"),
-        )
+      ? [
+          ...new Set([
+            ...MANAGED_AUTO_ALLOWED_TOOLS,
+            ...(request.allowedTools ?? []),
+          ]),
+        ].filter((tool) => !tool.startsWith("AskUserQuestion"))
       : request.allowedTools;
     const allowedTools = simulationReporter
       ? [
@@ -339,8 +360,9 @@ export class ChatRunManager {
 
     // `bypassPermissions` cannot express SalesAI's policy: the Agent SDK skips
     // canUseTool entirely in that mode, including for AskUserQuestion. Keep the
-    // SDK in default mode and auto-allow every *ordinary* tool in PreToolUse;
-    // AskUserQuestion deliberately falls through to canUseTool below.
+    // SDK in default mode, pre-authorize ordinary tools for background agents,
+    // and keep the PreToolUse fallback. AskUserQuestion deliberately falls
+    // through to canUseTool below.
     const managedPermissionMode = managedProductRun
       ? "default"
       : request.permissionMode;

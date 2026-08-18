@@ -1245,8 +1245,22 @@ describe("Chat Handler - Permission Mode Tests", () => {
       });
       expect(mockQuery.mock.calls[0]?.[0].options).toMatchObject({
         permissionMode: "default",
-        allowedTools: ["Read"],
       });
+      expect(mockQuery.mock.calls[0]?.[0].options?.allowedTools).toEqual(
+        expect.arrayContaining([
+          "Agent",
+          "Bash",
+          "Edit",
+          "Glob",
+          "Grep",
+          "Read",
+          "Skill",
+          "Write",
+        ]),
+      );
+      expect(mockQuery.mock.calls[0]?.[0].options?.allowedTools).not.toEqual(
+        expect.arrayContaining(["AskUserQuestion", "AskUserQuestion(*)"]),
+      );
       expect(
         mockQuery.mock.calls[0]?.[0].options?.allowDangerouslySkipPermissions,
       ).toBeUndefined();
