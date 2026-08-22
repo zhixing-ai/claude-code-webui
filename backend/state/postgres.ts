@@ -70,14 +70,23 @@ export class PostgresSessionStore implements SessionStore {
   }
 
   async load(key: SessionKey): Promise<SessionStoreEntry[] | null> {
+    // `subpath IS NOT DISTINCT FROM $2` is not an indexable qual: the planner
+    // can only use session_id from claude_session_entries_session_idx, so a main
+    // transcript load also reads every subagent row of that session and sorts
+    // afterwards. Both branches below are index conditions on
+    // (session_id, subpath, id) and already yield rows in id order.
+    const subpath = key.subpath ?? null;
+    const condition = subpath === null ? "subpath IS NULL" : "subpath = $2";
+    const values =
+      subpath === null ? [key.sessionId] : [key.sessionId, subpath];
     const query = () =>
       this.pool.query<{ entry: SessionStoreEntry }>(
         `SELECT entry
          FROM ${this.table}
          WHERE session_id = $1
-           AND subpath IS NOT DISTINCT FROM $2
+           AND ${condition}
          ORDER BY id`,
-        [key.sessionId, key.subpath ?? null],
+        values,
       );
     let result;
     try {

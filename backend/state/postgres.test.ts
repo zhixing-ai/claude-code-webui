@@ -32,7 +32,33 @@ describe("PostgresSessionStore", () => {
     ]);
     expect(entries).toEqual([{ type: "user", uuid: "entry-1" }]);
     expect(query.mock.calls[1]?.[0]).not.toContain("project_key");
-    expect(query.mock.calls[1]?.[1]).toEqual(["session-1", null]);
+    expect(query.mock.calls[1]?.[0]).toContain("subpath IS NULL");
+    expect(query.mock.calls[1]?.[1]).toEqual(["session-1"]);
+  });
+
+  it("loads a subagent transcript with an indexable subpath equality", async () => {
+    const query = vi.fn().mockResolvedValueOnce({
+      rows: [{ entry: { type: "user", uuid: "entry-1" } }],
+    });
+    const store = new PostgresSessionStore(
+      { query } as unknown as Pool,
+      "tenant_demo",
+    );
+
+    await expect(
+      store.load({
+        projectKey: "-workspace",
+        sessionId: "session-1",
+        subpath: "subagents/agent-1",
+      }),
+    ).resolves.toEqual([{ type: "user", uuid: "entry-1" }]);
+
+    expect(query.mock.calls[0]?.[0]).not.toContain("IS NOT DISTINCT FROM");
+    expect(query.mock.calls[0]?.[0]).toContain("subpath = $2");
+    expect(query.mock.calls[0]?.[1]).toEqual([
+      "session-1",
+      "subagents/agent-1",
+    ]);
   });
 
   it("rejects an unsafe tenant schema", () => {
