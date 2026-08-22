@@ -82,7 +82,7 @@ async function main(runtime: NodeRuntime) {
       keepAlive: true,
       keepAliveInitialDelayMillis: 10_000,
       max: 5,
-      query_timeout: 30_000,
+      query_timeout: 60_000,
     });
     pool.on("error", (error) => {
       logger.cli.error("PostgreSQL session store error: {error}", { error });
