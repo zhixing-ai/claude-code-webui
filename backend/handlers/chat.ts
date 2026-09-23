@@ -20,6 +20,7 @@ import type { RunStateStore, StoredRunEvent } from "../state/types.ts";
 import { MemoryRunStore } from "../state/memory.ts";
 import { logger } from "../utils/logger.ts";
 import { PendingInteractions } from "./interactions.ts";
+import { queryWithTaskLifetime } from "./query-lifecycle.ts";
 import { FDE_MAIN_AGENT, projectAgentEvents } from "../agents.ts";
 import {
   createSimulationReporter,
@@ -564,10 +565,9 @@ export class ChatRunManager {
       let contextLimit = false;
       let progressed = false;
       try {
-        for await (const sdkMessage of query({
-          prompt,
-          options: queryOptions,
-        })) {
+        for await (const sdkMessage of managedProductRun
+          ? queryWithTaskLifetime(prompt, queryOptions)
+          : query({ prompt, options: queryOptions })) {
           if (suppressContextLimit && isContextLimitMessage(sdkMessage)) {
             contextLimit = true;
             continue;
