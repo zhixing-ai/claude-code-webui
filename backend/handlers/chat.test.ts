@@ -15,23 +15,26 @@ type MockClaudeCode = {
   tool: ReturnType<typeof vi.fn>;
 };
 
-vi.mock("@anthropic-ai/claude-agent-sdk", (): MockClaudeCode => ({
-  createSdkMcpServer: vi.fn((options) => ({
-    type: "sdk",
-    name: options.name,
-    instance: {},
-    tools: options.tools,
-  })),
-  getSessionMessages: vi.fn(),
-  query: vi.fn(),
-  InMemorySessionStore: class {},
-  tool: vi.fn((name, description, inputSchema, handler) => ({
-    name,
-    description,
-    inputSchema,
-    handler,
-  })),
-}));
+vi.mock(
+  "@anthropic-ai/claude-agent-sdk",
+  (): MockClaudeCode => ({
+    createSdkMcpServer: vi.fn((options) => ({
+      type: "sdk",
+      name: options.name,
+      instance: {},
+      tools: options.tools,
+    })),
+    getSessionMessages: vi.fn(),
+    query: vi.fn(),
+    InMemorySessionStore: class {},
+    tool: vi.fn((name, description, inputSchema, handler) => ({
+      name,
+      description,
+      inputSchema,
+      handler,
+    })),
+  }),
+);
 
 // Mock logger
 vi.mock("../utils/logger", () => ({
@@ -1092,7 +1095,9 @@ describe("Chat Handler - Permission Mode Tests", () => {
         },
       });
       expect(mockQuery).toHaveBeenCalledWith({
-        prompt: "Ask me",
+        prompt: expect.objectContaining({
+          [Symbol.asyncIterator]: expect.any(Function),
+        }),
         options: expect.objectContaining({
           permissionMode: "default",
           canUseTool: expect.any(Function),
@@ -1593,7 +1598,9 @@ describe("Chat Handler - Simulation workflow", () => {
 
     const options = mockQuery.mock.calls[0]?.[0].options;
     expect(mockQuery).toHaveBeenCalledWith({
-      prompt: "你好",
+      prompt: expect.objectContaining({
+        [Symbol.asyncIterator]: expect.any(Function),
+      }),
       options: expect.any(Object),
     });
     expect(options?.plugins).toBeUndefined();
@@ -1725,7 +1732,9 @@ describe("Chat Handler - Simulation workflow", () => {
     const body = await new Response(response.body).text();
 
     expect(mockQuery).toHaveBeenCalledWith({
-      prompt: "生成模拟测试场景",
+      prompt: expect.objectContaining({
+        [Symbol.asyncIterator]: expect.any(Function),
+      }),
       options: expect.objectContaining({
         tools: [
           "Task",
