@@ -481,3 +481,36 @@ MIT License - see [LICENSE](LICENSE) for details.
 [⭐ Star this repo](https://github.com/sugyan/claude-code-webui) • [🐛 Report issues](https://github.com/sugyan/claude-code-webui/issues) • [💬 Discussions](https://github.com/sugyan/claude-code-webui/discussions)
 
 </div>
+
+## Builder image Read protection
+
+Builder-mode Read hooks inspect image metadata before the SDK decodes the original.
+Images up to 4 million pixels with a longest edge up to 2000 pass through unchanged.
+Larger supported images get temporary overlapping JPEG tiles (edge 2000, overlap
+160) from a canvas bounded to 6000 pixels; the source file is never overwritten.
+Preparation is serialized within the backend process, with bounded sharp cache and
+threads. Inputs over 32 MiB / 120 million pixels, multi-page images, and non-JPEG
+images over 16 million pixels fail explicitly. Derivatives are removed when the run
+ends. This protects the Read path; it is not an OS-level restriction on Bash or
+other decoders. Resized JPEG tiles are not lossless, and unreadable detail must not
+be guessed.
+
+This protection changes no FDE Skill, Agent role, turn budget, scoring rule, or
+shipping contract. `sharp` must remain available alongside the bundled backend,
+including native binaries matching the deployment platform. Deployment acceptance
+must verify the packaged native module and actual SDK Read path.
+
+## Builder simulation completion checks
+
+For registered FDE sales and evaluator roles, a task notification marked
+`completed` is not sufficient evidence of a final answer. Builder run hooks prefer
+the SDK's native SubagentStop final text. If that signal is absent, the runtime
+checks the last assistant turn in at most the last 1 MiB of the task transcript.
+Tool-only endings, empty answers, and unavailable evidence fail the run instead of
+publishing success. Structured simulations also emit simulation_failed, and the
+reporter rejects subsequent success updates after detection.
+
+Continuation calls cannot reuse a previous round's stop evidence. This does not
+add SendMessage to the simulation tool list, change FDE role prompts or budgets,
+retry tasks, assign a zero score, or validate the factual quality of an answer.
+Browser history replay and full merchant workflow acceptance remain separate checks.

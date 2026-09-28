@@ -500,9 +500,11 @@ describe("App Routing", () => {
       </SettingsProvider>,
     );
 
-    fireEvent.click(await screen.findByRole("button", {
-      name: /模拟测试/,
-    }));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /模拟测试/,
+      }),
+    );
     expect(await screen.findByText("历史讨价还价")).toBeInTheDocument();
     expect(await screen.findByText("1 / 1 已模拟")).toBeInTheDocument();
   });
@@ -1052,9 +1054,7 @@ describe("App Routing", () => {
     render(
       <SettingsProvider>
         <MemoryRouter
-          initialEntries={[
-            "/projects/test-path?sessionId=session-simulation",
-          ]}
+          initialEntries={["/projects/test-path?sessionId=session-simulation"]}
         >
           <Routes>
             <Route path="/projects/*" element={<ChatPage />} />
@@ -1063,9 +1063,11 @@ describe("App Routing", () => {
       </SettingsProvider>,
     );
 
-    fireEvent.click(await screen.findByRole("button", {
-      name: /模拟测试/,
-    }));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /模拟测试/,
+      }),
+    );
     expect(await screen.findByText("刷新后仍在的场景")).toBeInTheDocument();
     expect(await screen.findByText("1 / 1 已模拟")).toBeInTheDocument();
     expect(

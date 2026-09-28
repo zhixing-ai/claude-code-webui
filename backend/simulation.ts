@@ -539,7 +539,8 @@ function describeSimulationLifecycleError(value: unknown): string {
 export function validateSimulationLifecycleEvent(
   value: unknown,
 ):
-  { ok: true; event: SimulationLifecycleEvent } | { ok: false; error: string } {
+  | { ok: true; event: SimulationLifecycleEvent }
+  | { ok: false; error: string } {
   const event = readSimulationLifecycleEvent(value);
   return event
     ? { ok: true, event }

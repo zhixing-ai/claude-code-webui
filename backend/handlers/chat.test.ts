@@ -1,3 +1,7 @@
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import sharp from "sharp";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Context } from "hono";
 import { handleChatRequest } from "./chat";
@@ -76,6 +80,70 @@ describe("Chat Handler - Permission Mode Tests", () => {
 
   afterEach(() => {
     requestAbortControllers.clear();
+  });
+
+  it("intercepts oversized Builder Read before SDK decoding and cleans tiles after the run", async () => {
+    const root = await mkdtemp(join(tmpdir(), "builder-hook-test-"));
+    const source = join(root, "original.jpg");
+    let tiles: string[] = [];
+    try {
+      await sharp({
+        create: { width: 2200, height: 2100, channels: 3, background: "white" },
+      })
+        .jpeg()
+        .toFile(source);
+      const original = await readFile(source);
+      mockContext.req.json = vi.fn().mockResolvedValue({
+        message: "Read image",
+        requestId: "image-hook",
+        runMode: "builder",
+        workingDirectory: root,
+      });
+      mockQuery.mockImplementation(
+        ({ options }: any) =>
+          ({
+            [Symbol.asyncIterator]: async function* () {
+              const hook = options.hooks.PreToolUse[0].hooks[0];
+              const invoke = (file_path: string) =>
+                hook(
+                  {
+                    hook_event_name: "PreToolUse",
+                    tool_name: "Read",
+                    tool_input: { file_path },
+                    tool_use_id: "image-read",
+                  },
+                  "image-read",
+                  {},
+                );
+              const result = await invoke(source);
+              expect(result.hookSpecificOutput.permissionDecision).toBe("deny");
+              tiles = result.hookSpecificOutput.permissionDecisionReason
+                .split("\n")
+                .slice(1);
+              expect(tiles.length).toBe(4);
+              expect(
+                (await invoke(tiles[0])).hookSpecificOutput.permissionDecision,
+              ).toBe("allow");
+              yield {
+                type: "result",
+                subtype: "success",
+                session_id: "image-session",
+              } as any;
+            },
+          }) as any,
+      );
+      const response = await handleChatRequest(
+        mockContext,
+        requestAbortControllers,
+        interactions,
+      );
+      await response.text();
+      expect(tiles.length).toBe(4);
+      await expect(readFile(tiles[0])).rejects.toThrow();
+      expect(await readFile(source)).toEqual(original);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   describe("Permission Mode Parameter Handling", () => {
@@ -1815,3 +1883,171 @@ describe("Chat Handler - Simulation workflow", () => {
     ).resolves.toEqual({});
   });
 });
+
+it.each(
+  ["stop", "notification"].flatMap((kind) =>
+    ["business-agent", "evaluator"].flatMap((role) =>
+      [false, true].map((structured) => ({ kind, role, structured })),
+    ),
+  ),
+)(
+  "fails a builder run with no final answer via $kind/$role/structured=$structured",
+  async ({ kind, role, structured }) => {
+    vi.clearAllMocks();
+    const runStore = new MemoryRunStore();
+    const dir = await mkdtemp(join(tmpdir(), "chat-business-stop-"));
+    try {
+      const file = join(dir, "agent.jsonl");
+      await writeFile(
+        file,
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            id: "last",
+            stop_reason: "tool_use",
+            content: [{ type: "tool_use", name: "Read" }],
+          },
+        }),
+      );
+      mockQuery.mockImplementation(
+        ({ options }) =>
+          ({
+            [Symbol.asyncIterator]: async function* () {
+              if (kind === "stop") {
+                await options!.hooks!.SubagentStop![0].hooks[0](
+                  {
+                    hook_event_name: "SubagentStop",
+                    agent_type: `fde-suite:fde-${role}`,
+                    agent_transcript_path: file,
+                  } as any,
+                  undefined,
+                  { signal: new AbortController().signal },
+                );
+              } else {
+                await options!.hooks!.PreToolUse![0].hooks[0](
+                  {
+                    hook_event_name: "PreToolUse",
+                    tool_name: "Agent",
+                    tool_use_id: "sales-task",
+                    tool_input: {
+                      subagent_type: `fde-suite:fde-${role}`,
+                    },
+                  } as any,
+                  undefined,
+                  { signal: new AbortController().signal },
+                );
+                yield {
+                  type: "system",
+                  subtype: "task_notification",
+                  status: "completed",
+                  tool_use_id: "sales-task",
+                  output_file: file,
+                } as any;
+              }
+              if (kind === "stop" && structured) {
+                const publish = (options!.mcpServers!.webui as any).tools[0]
+                  .handler;
+                const rejected = await publish({ kind: "design_started" });
+                expect(rejected.isError).toBe(true);
+                expect(JSON.stringify(rejected)).toContain("模拟未完成");
+              }
+              yield {
+                type: "result",
+                subtype: "success",
+                result: "False success",
+                session_id: "probe",
+              } as any;
+            },
+          }) as any,
+      );
+      const context = {
+        req: {
+          json: vi.fn().mockResolvedValue({
+            message: "read probe",
+            requestId: "incomplete-business",
+            runMode: "builder",
+            workingDirectory: dir,
+            ...(structured ? { simulation: { action: "design" } } : {}),
+          }),
+        },
+        var: { config: { fdeSuitePluginDir: "/opt/fde-suite", runStore } },
+      } as unknown as Context;
+      const response = await handleChatRequest(
+        context,
+        new Map(),
+        new PendingInteractions(),
+      );
+      const body = await response.text();
+      expect(body).toContain("模拟未完成");
+      expect(runStore.getRun("incomplete-business")?.status).toBe("failed");
+      expect(body).not.toContain('"kind":"simulation_completed"');
+      if (structured) expect(body).toContain('"kind":"simulation_failed"');
+      expect(body).not.toContain("False success");
+      expect(body).not.toContain('"type":"done"');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+it.each(["business-agent", "evaluator"])(
+  "keeps a normal %s answer successful before transcript flush",
+  async (role) => {
+    vi.clearAllMocks();
+    const runStore = new MemoryRunStore();
+    mockQuery.mockImplementation(
+      ({ options }: any) =>
+        ({
+          [Symbol.asyncIterator]: async function* () {
+            await options.hooks.PreToolUse[0].hooks[0]({
+              hook_event_name: "PreToolUse",
+              tool_name: "Agent",
+              tool_use_id: "normal-task",
+              tool_input: { subagent_type: `fde-suite:fde-${role}` },
+            });
+            await options.hooks.SubagentStop[0].hooks[0]({
+              hook_event_name: "SubagentStop",
+              agent_type: `fde-suite:fde-${role}`,
+              agent_id: "normal-agent",
+              last_assistant_message: "FINAL_ANSWER",
+              agent_transcript_path: "/not-yet-flushed",
+            });
+            yield {
+              type: "system",
+              subtype: "task_notification",
+              status: "completed",
+              tool_use_id: "normal-task",
+              task_id: "normal-agent",
+              output_file: "/not-yet-flushed",
+            } as any;
+            yield {
+              type: "result",
+              subtype: "success",
+              result: "FINAL_ANSWER",
+              session_id: "normal-session",
+            } as any;
+          },
+        }) as any,
+    );
+    const context = {
+      req: {
+        json: vi.fn().mockResolvedValue({
+          message: "test",
+          requestId: "normal-completion",
+          runMode: "builder",
+        }),
+      },
+      var: { config: { fdeSuitePluginDir: "/opt/fde-suite", runStore } },
+    } as unknown as Context;
+    const response = await handleChatRequest(
+      context,
+      new Map(),
+      new PendingInteractions(),
+    );
+    const body = await response.text();
+    expect(body).toContain("FINAL_ANSWER");
+    expect(body).toContain('"type":"done"');
+    expect(body).not.toContain('"type":"error"');
+    expect(runStore.getRun("normal-completion")?.status).toBe("completed");
+  },
+);
