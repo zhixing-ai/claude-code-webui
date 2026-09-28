@@ -23,6 +23,7 @@ await build({
     "hono",
     "commander",
     "pg",
+    "sharp",
   ],
   sourcemap: true,
 });

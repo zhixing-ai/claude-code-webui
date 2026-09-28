@@ -9,6 +9,8 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { Context } from "hono";
 import { posix } from "node:path";
+import { BuilderImageReadGuard } from "../builder-image-read.ts";
+import { BusinessAgentCompletionGuard } from "../business-agent-completion.ts";
 import type {
   AskUserQuestionItem,
   AskUserQuestionOption,
@@ -301,6 +303,11 @@ export class ChatRunManager {
 
     const simulation = request.simulation;
     const sandboxTest = request.runMode === "sandbox_test";
+    const imageReads =
+      request.runMode === "builder"
+        ? new BuilderImageReadGuard(request.workingDirectory ?? process.cwd())
+        : undefined;
+    const businessCompletion = new BusinessAgentCompletionGuard();
     const simulationTracker = simulation
       ? new SimulationLifecycleTracker(simulation)
       : undefined;
@@ -308,6 +315,8 @@ export class ChatRunManager {
     const emitSimulation = (
       event: Parameters<SimulationLifecycleTracker["accept"]>[0],
     ) => {
+      if (businessCompletion.error && event.kind !== "simulation_failed")
+        return businessCompletion.error;
       const rejection = simulationTracker?.accept(event);
       if (!rejection) {
         this.emit(request.requestId, { type: "simulation_event", event });
@@ -387,6 +396,22 @@ export class ChatRunManager {
           },
         };
       }
+      if (imageReads && input.tool_name === "Read") {
+        const file = (input.tool_input as { file_path?: unknown })?.file_path;
+        if (typeof file === "string") {
+          const reason = await imageReads.check(file);
+          if (reason)
+            return {
+              hookSpecificOutput: {
+                hookEventName: "PreToolUse",
+                permissionDecision: "deny",
+                permissionDecisionReason: reason,
+              },
+            };
+        }
+      }
+      businessCompletion.register(input);
+
       return {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
@@ -462,6 +487,20 @@ export class ChatRunManager {
         ? {
             hooks: {
               PreToolUse: [{ hooks: [autoApproveOrdinaryTools] }],
+              ...(!sandboxTest
+                ? {
+                    SubagentStop: [
+                      {
+                        hooks: [
+                          async (input) => {
+                            await businessCompletion.stopped(input);
+                            return {};
+                          },
+                        ],
+                      },
+                    ],
+                  }
+                : {}),
             },
           }
         : {}),
@@ -529,7 +568,9 @@ export class ChatRunManager {
       },
     };
 
-    const forward = (sdkMessage: SDKMessage) => {
+    const forward = async (sdkMessage: SDKMessage) => {
+      await businessCompletion.notified(sdkMessage);
+      if (businessCompletion.error) throw new Error(businessCompletion.error);
       logger.chat.debug("Claude SDK Message: {sdkMessage}", { sdkMessage });
       const sessionId = readSessionId(sdkMessage);
       if (
@@ -573,7 +614,7 @@ export class ChatRunManager {
             continue;
           }
           progressed ||= sdkMessage.type !== "system";
-          forward(sdkMessage);
+          await forward(sdkMessage);
         }
         if (suppressContextLimit && contextLimit) {
           throw new Error("Prompt is too long");
@@ -677,6 +718,7 @@ export class ChatRunManager {
       }
 
       if (!abortController.signal.aborted) {
+        if (businessCompletion.error) throw new Error(businessCompletion.error);
         const incomplete = simulationTracker?.incompleteReason();
         if (incomplete) {
           emitSimulation({ kind: "simulation_failed", error: incomplete });
@@ -697,6 +739,9 @@ export class ChatRunManager {
         this.emit(request.requestId, { type: "aborted" });
       } else {
         status = "failed";
+        if (simulation && businessCompletion.error) {
+          emitSimulation({ kind: "simulation_failed", error: errorMessage });
+        }
         logger.chat.error("Claude Code execution failed: {error}", { error });
         this.emit(request.requestId, {
           type: "error",
@@ -704,6 +749,7 @@ export class ChatRunManager {
         });
       }
     } finally {
+      await imageReads?.dispose().catch(() => undefined);
       this.interactions.cancelRequest(request.requestId, "Request ended");
       this.requestAbortControllers.delete(request.requestId);
       this.runStore.finishRun(request.requestId, status, errorMessage);
